@@ -1,0 +1,88 @@
+# conf/pipeline/make_hexagons.yaml
+# @package _global_
+
+make: false
+
+make_hexagons:
+  enabled: false
+
+  # --- wejście (skąd bierzemy bbox) ---
+  schema_in: ${duckdb.schema}         # zwykle "egib"
+  source_table: "kug"
+  geom_column: "geometry"             # WKB (BLOB) w DB
+  year_column: "year"
+  year: 2025                          # rok, dla którego generujemy heksy  
+  source_crs: "EPSG:2180"             # CRS geometrii w tabeli wejściowej
+
+
+
+  # --- wyjście ---
+  out_schema: "hex"                   # docelowy schemat
+  out_table_prefix: "Hexagons"
+  resolutions: [7, 8, 9]                 # listą możesz sterować, np. [7,8,9]
+  overwrite: true
+  geom_srid: 2180
+
+
+# ---- JEDNO ŹRÓDŁO PRAWDY dla gridu / rozdzielczości ----
+
+resolution: r9
+
+hex:
+  table: "hex.Hexagons_${pipeline.resolution}"
+  schema: hex
+  id_col: hex_id          
+  geom_col: geometry
+  out_suffix: ${pipeline.resolution}
+
+egib:
+  table: egib.DzialkaEwidencyjna
+  geom_col: geometry
+  year_col: year
+
+layer_defaults:
+  decimals: 3
+  min_cover_fraction: 0.02
+  write_mode: replace
+  enforce_crs: EPSG:2180
+
+# Geometric Features → dołączenie po iddzialki
+
+add_parcels_data:
+  enabled: true
+  out_table: hex.DzialkaEwidencyjna_${pipeline.resolution}
+  join_with: egib.GeometricFeatures
+  join_columns: ["iddzialki","year"]
+  join_how: left
+  join_prefix: gf_
+
+# Transakcje → dołączenie po iddzialki + roku
+
+add_transactions_data:
+  enabled: false
+  out_table: hex.Transakcje_${pipeline.resolution}
+  join_with: egib.Transakcje
+  join_columns: ["iddzialki","year"]
+  join_right_on: ["iddzialki", "tx_year"] # po PRAWEJ
+  join_how: left
+  join_prefix: tx_
+  join_dedupe:
+    strategy: reduce
+    reduce_map:
+      tx_cena: max
+    treat_zero_as_na: ["tx_cena"]            # 0 → NULL przy średniej
+    extra_nonzero_mean_cols: ["tx_cena"]     # dodaj też tx_cena_mean_nz
+
+add_mpzp_data:
+  enabled: false
+  table: egib.MPZP
+  out_table: hex.mpzp_${pipeline.resolution}
+  klasy_mpzp: ['M','K','Z','U','I','P','L','W','C','R','IK','T','Brak']
+  join_prefix: mpzp_
+
+add_kug_data:
+  enabled: false
+  table: egib.kug
+  out_table: hex.kug_${pipeline.resolution}
+  klasy_uzg: ['R','Ł','Ps','N','L','dr','B','W','S','T','NB','K','E','O']
+  join_prefix: uzg_

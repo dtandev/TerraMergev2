@@ -1,0 +1,22 @@
+enabled: true
+
+dataset_table: "dataset.Parcels_neighborhood_r8"
+y_label: "y_next"
+drop_columns: ["geometry", "hex_id"]
+valid_years: [2024, 2023]
+inference_years: [2025]
+model_output_dir: "artifacts/models/parcel_r8_full_1y/"
+
+n_estimators: 500
+learning_rate: 0.05
+max_depth: -1
+random_state: 42
+early_stopping_rounds: 100
+log_eval_period: 50
+
+# eval controls
+perm_significance: true
+perm_n_repeats: 25          # zamiast 100
+perm_compute_brier: false   # wyłącz drugi przebieg
+perm_max_features: 50       # ogranicz do top-50 po GAIN
+perm_sample_rows: 5000      # subsample walidacji (opcjonalnie)

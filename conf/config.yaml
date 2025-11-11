@@ -1,0 +1,48 @@
+# === CONFIG ROOT (minimal) ===
+defaults:
+  - prepare: default
+  - features: default
+  - pipeline: make_hexagons
+  - dataset: default
+  - model: default
+  - _self_
+
+
+data:
+  # Nadpisujesz z CLI: data.base_dir=/mnt/c/...
+  base_dir: "D:\\EGIB_new\\pow_ostrodzki\\"
+  duckdb_path: "C:\\Users\\user\\OneDrive\\Documents\\VSC_workspace\\TerraMerge\\v2\\artifacts\\duckdb\\new\\egib_powiat_ostrodzki.duckdb"
+  transactions_path: "C:\\Users\\user\\OneDrive\\Documents\\VSC_workspace\\TerraMerge\\v2\\artifacts\\parquet\\transakcje.parquet"
+  mpzp_mapping_csv: "C:\\Users\\user\\OneDrive\\Documents\\VSC_workspace\\TerraMerge\\v2\\artifacts\\csv\\mpzp.csv"
+
+# Inicjalizacja DuckDB (opcja przyspieszająca operacje na Parquet)
+duckdb:
+  init: true # uruchomić raz, potem nie ma potrzeby
+  schema: "egib"
+  threads: null
+  memory_limit: null # "8GB"
+
+wfs:
+  url: "https://integracja.e-mapa.net/cgi-bin/mpzp"
+  version: "1.1.0"          # spróbuj 2.0.0; jeśli serwer marudzi, zjedź do 1.1.0
+  srsname: "EPSG:2180"
+  timeout_s: 60
+  layers:
+    - typename: "ms:przeznaczenia"
+      geom_field: "geometry"
+      alias: "przeznaczenia"   # użyte w nazwie pliku i kolumnie 'wfs_layer'
+    - typename: "ms:plany"
+      geom_field: "geometry"
+      alias: "plany"
+
+
+hydra:
+  run:
+    dir: artifacts/reports/${now:%Y%m%d_%H%M%S}
+  output_subdir: null
+
+logging:
+  console_level: INFO
+  file_level: INFO
+  log_dir: artifacts/logs
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <7}</level> | <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>"

@@ -1,0 +1,333 @@
+prepare:
+  enabled: false
+  clean:
+    enabled: true
+    remove_dir_names:
+    - swde
+    - gml
+    - shp
+  extract:
+    enabled: true
+  output_subdir: parquets
+  output_filename: input_data.parquet
+  uppercase_geometry: true
+  rename_legacy_2020: true
+  merge:
+    enabled: true
+    overwrite: true
+  layer_name_map:
+    Budynek:
+    - EGB_Budynek
+    - EGB_BudynekPOLYGON
+    - G5G_BUD
+    DzialkaEwidencyjna:
+    - EGB_DzialkaEwidencyjna
+    - EGB_DzialkaEwidencyjnaPOLYGON
+    - G5G_DZE
+    JednostkaEwidencyjna:
+    - EGB_JednostkaEwidencyjna
+    - G5G_JEW
+    KonturKlasyfikacyjny:
+    - EGB_KonturKlasyfikacyjny
+    - G5G_KKL
+    KonturUzytkuGruntowego:
+    - EGB_KonturUzytkuGruntowego
+    - G5G_UZG
+    ObrebEwidencyjny:
+    - EGB_ObrebEwidencyjny
+    - G5G_OBR
+    ObiektTrwaleZwiazanyZBudynkiem:
+    - EGB_ObiektTrwaleZwiazanyZBudynkiemPOLYGON
+    ObszarZabudowany:
+    - G5G_OZN
+    RodzajST:
+    - G5G_RST
+  clean_dataset:
+    enabled: true
+    overwrite: true
+    write_duckdb: true
+    layers:
+    - DzialkaEwidencyjna
+    units: []
+    apply:
+      lowercase: true
+      crs_target: EPSG:2180
+      drop_columns:
+      - G5NOS
+      - G5WRT
+      - G5DWR
+      - G5PEW
+      - G5RZN
+      - G5DWW
+      - G5DTW
+      - G5DTU
+      - ID
+      - IDR
+      - ST_OBJ
+      - G5IDR
+      - G5DZP
+features:
+  enabled: false
+  crs_target: EPSG:2180
+  add_transaction_prices:
+    enabled: false
+    id_column: iddzialki
+    date_column: Data
+    write_mode: replace
+    drop_columns: []
+  add_uzg:
+    enabled: false
+    units: []
+    overwrite: true
+    write_duckdb: true
+  add_mpzp:
+    enabled: false
+    source_layer: DzialkaEwidencyjna
+    for_parcels: true
+    derive_features: true
+    add_to_duckdb:
+      enabled: true
+  add_geometric_features:
+    enabled: false
+    schema: egib
+    source_table: DzialkaEwidencyjna
+    dest_table: GeometricFeatures
+    id_column: iddzialki
+    year_column: year
+    geom_column: geometry
+    decimals: 3
+    makers:
+    - SizeScaleFeatures
+    - ElongationOrientationFeatures
+    - CompactnessCircularityFeatures
+    - EdgeComplexityFeatures
+    - MomentInertiaFeatures
+    - EdgeContextFeatures
+    - ExtremeEnvelopeFeatures
+    moment_inertia:
+      sample_points: 500
+    add_to_duckdb:
+      enabled: false
+pipeline:
+  make: false
+  make_hexagons:
+    enabled: false
+    schema_in: egib
+    source_table: kug
+    geom_column: geometry
+    year_column: year
+    year: 2025
+    source_crs: EPSG:2180
+    out_schema: hex
+    out_table_prefix: Hexagons
+    resolutions:
+    - 7
+    - 8
+    - 9
+    overwrite: true
+    geom_srid: 2180
+  resolution: r9
+  hex:
+    table: hex.Hexagons_r9
+    schema: hex
+    id_col: hex_id
+    geom_col: geometry
+    out_suffix: r9
+  egib:
+    table: egib.DzialkaEwidencyjna
+    geom_col: geometry
+    year_col: year
+  layer_defaults:
+    decimals: 3
+    min_cover_fraction: 0.02
+    write_mode: replace
+    enforce_crs: EPSG:2180
+  add_parcels_data:
+    enabled: true
+    out_table: hex.DzialkaEwidencyjna_r9
+    join_with: egib.GeometricFeatures
+    join_columns:
+    - iddzialki
+    - year
+    join_how: left
+    join_prefix: gf_
+  add_transactions_data:
+    enabled: false
+    out_table: hex.Transakcje_r9
+    join_with: egib.Transakcje
+    join_columns:
+    - iddzialki
+    - year
+    join_right_on:
+    - iddzialki
+    - tx_year
+    join_how: left
+    join_prefix: tx_
+    join_dedupe:
+      strategy: reduce
+      reduce_map:
+        tx_cena: max
+      treat_zero_as_na:
+      - tx_cena
+      extra_nonzero_mean_cols:
+      - tx_cena
+  add_mpzp_data:
+    enabled: false
+    table: egib.MPZP
+    out_table: hex.mpzp_r9
+    klasy_mpzp:
+    - M
+    - K
+    - Z
+    - U
+    - I
+    - P
+    - L
+    - W
+    - C
+    - R
+    - IK
+    - T
+    - Brak
+    join_prefix: mpzp_
+  add_kug_data:
+    enabled: false
+    table: egib.kug
+    out_table: hex.kug_r9
+    klasy_uzg:
+    - R
+    - Ł
+    - Ps
+    - 'N'
+    - L
+    - dr
+    - B
+    - W
+    - S
+    - T
+    - NB
+    - K
+    - E
+    - O
+    join_prefix: uzg_
+dataset:
+  enabled: true
+  resolution: r8
+  labels_for_parcels:
+    enabled: true
+    table: hex.DzialkaEwidencyjna_r8
+    out_table: labels.ParcelLabels_r8
+    parcels_split_col_name: n_parcel
+    area_conservation_tol: 0.005
+    eps_abs: 100.0
+    extra_horizon: 5
+  labels_for_uzg:
+    enabled: true
+    table: hex.kug_r8
+    out_table: labels.kugLabels_r8
+    years_ahead: 3
+    area_conservation_tol: 0.01
+    agri_classes:
+    - uzg_R_share
+    - sum_agri
+    share_B_col: uzg_B_share
+    sum_col: sum_uzg
+    extra_horizon: 5
+  calculate_neighborhood:
+    enabled: true
+    tables_to_split:
+    - hex.DzialkaEwidencyjna_r8
+    - hex.kug_r8
+    - hex.MPZP_r8
+    - hex.Transakcje_r8
+    proxy_cols:
+    - split_proxy
+    keys:
+    - hex_id
+    - year
+    table_with_labels: labels.ParcelLabels_r8
+    categorical_cols:
+    - jednostka
+    geom_col: geometry
+    hex_id_col: hex_id
+    year_col: year
+    R_values:
+    - 1
+    - 2
+    - 3
+    rolling: true
+    min_neighbors: 4
+    prefix: nbr
+    out_table: dataset.Parcels_neighborhood_r8
+  prune_features:
+    enabled: false
+    protected_cols:
+    - year
+    - hex_id
+    - geometry
+    - jednostka
+    drop_high_nan: true
+    high_nan_threshold: 0.7
+    drop_constant: true
+    quasi_constant_unique_ratio: 0.05
+    drop_quasi_constant: true
+    drop_duplicate_cols: true
+    drop_high_corr: true
+    corr_threshold: 0.99
+    corr_method: pearson
+    numeric_only_for_corr: true
+    return_report: true
+  join_y_label:
+    enabled: true
+    y_label_col: y_next
+model:
+  enabled: true
+  dataset_table: dataset.Parcels_neighborhood_r8
+  y_label: y_next
+  drop_columns:
+  - geometry
+  - hex_id
+  valid_years:
+  - 2024
+  - 2023
+  inference_years:
+  - 2025
+  model_output_dir: artifacts/models/parcel_r8_full_1y/
+  n_estimators: 500
+  learning_rate: 0.05
+  max_depth: -1
+  random_state: 42
+  early_stopping_rounds: 100
+  log_eval_period: 50
+  n_perm_repeats: 5
+  perm_significance: true
+  perm_n_repeats: 100
+  perm_compute_brier: true
+data:
+  base_dir: D:\EGIB_new\pow_ostrodzki\
+  duckdb_path: C:\Users\user\OneDrive\Documents\VSC_workspace\TerraMerge\v2\artifacts\duckdb\new\egib_powiat_ostrodzki.duckdb
+  transactions_path: C:\Users\user\OneDrive\Documents\VSC_workspace\TerraMerge\v2\artifacts\parquet\transakcje.parquet
+  mpzp_mapping_csv: C:\Users\user\OneDrive\Documents\VSC_workspace\TerraMerge\v2\artifacts\csv\mpzp.csv
+duckdb:
+  init: true
+  schema: egib
+  threads: null
+  memory_limit: null
+wfs:
+  url: https://integracja.e-mapa.net/cgi-bin/mpzp
+  version: 1.1.0
+  srsname: EPSG:2180
+  timeout_s: 60
+  layers:
+  - typename: ms:przeznaczenia
+    geom_field: geometry
+    alias: przeznaczenia
+  - typename: ms:plany
+    geom_field: geometry
+    alias: plany
+logging:
+  console_level: INFO
+  file_level: INFO
+  log_dir: artifacts/logs
+  format: '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <7}</level>
+    | <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>'

@@ -1,0 +1,60 @@
+# conf/pipeline/features.yaml
+# @package _global_
+
+enabled: false
+crs_target: "EPSG:2180"
+
+add_transaction_prices:
+  enabled: false
+  id_column: "iddzialki"
+  date_column: "Data"
+  write_mode: "replace"
+
+  drop_columns: []
+
+# 5) PRZYGOTOWANIE DANYCH O UZG
+
+add_uzg:
+  enabled: false
+  units: []            # [] → wszystkie obręby w parquets/
+  overwrite: true
+  write_duckdb: true   # jeśli chcesz od razu CREATE TABLE w DuckDB
+  
+add_mpzp:
+  enabled: false
+  source_layer: "DzialkaEwidencyjna"   # skąd bierzemy obręby (jak było)
+  for_parcels: true  # jeśli True, oznaczenie w planie przypisane do działki; jeśli False, ogólny plan niezależnie od działek
+  derive_features: true # czy tworzyć cechy pomocnicze (rok planu, czy plan jest aktualny)
+  add_to_duckdb:
+    enabled: true                      # wynik do egib."MPZP"
+
+add_geometric_features:
+  enabled: false
+
+  # --- skąd/czym zapisujemy ---
+  schema: ${duckdb.schema}                  # dziedziczy z sekcji duckdb
+  source_table: "DzialkaEwidencyjna"
+  dest_table:   "GeometricFeatures"
+
+  # --- kolumny klucza i geometrii ---
+  id_column:    "iddzialki"
+  year_column:  "year"
+  geom_column:  "geometry"
+
+  # --- kontrola cech i dokładności ---
+  decimals: 3                               # ZAOKRĄGLENIE cech w DB
+  makers:                                    # jeśli pusta → użyj wszystkich dostępnych
+    - SizeScaleFeatures
+    - ElongationOrientationFeatures
+    - CompactnessCircularityFeatures
+    - EdgeComplexityFeatures
+    - MomentInertiaFeatures
+    - EdgeContextFeatures
+    - ExtremeEnvelopeFeatures
+  moment_inertia:
+    sample_points: 500
+
+  add_to_duckdb:
+    enabled: false
+
+

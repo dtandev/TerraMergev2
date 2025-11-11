@@ -1,0 +1,76 @@
+# conf/dataset/dataset_preparation.yaml
+# @package _global_
+
+enabled: true
+
+resolution: r8
+
+labels_for_parcels:
+  enabled: true
+  table: "hex.DzialkaEwidencyjna_${dataset.resolution}"
+  out_table: "labels.ParcelLabels_${dataset.resolution}"
+  parcels_split_col_name: 'n_parcel'
+  area_conservation_tol: 0.005
+  eps_abs: 100.0
+  extra_horizon: 5
+
+labels_for_uzg:
+  enabled: true
+  table: "hex.kug_${dataset.resolution}"
+  out_table: "labels.kugLabels_${dataset.resolution}"
+  years_ahead: 3
+  area_conservation_tol: 0.01
+  agri_classes: ["uzg_R_share", "sum_agri"]
+  share_B_col: "uzg_B_share"
+  sum_col: "sum_uzg"
+  extra_horizon: 5
+
+calculate_neighborhood:
+  enabled: true
+  tables_to_split:
+    - "hex.DzialkaEwidencyjna_${dataset.resolution}"
+    - "hex.kug_${dataset.resolution}"
+    - "hex.MPZP_${dataset.resolution}"
+    - "hex.Transakcje_${dataset.resolution}"
+  proxy_cols: ["split_proxy"]
+  keys: ["hex_id","year"]
+  table_with_labels: "labels.ParcelLabels_${dataset.resolution}" # "labels.kugLabels_${dataset.resolution}_sum_agri", "labels.kugLabels_${dataset.resolution}_uzg_R_share"
+  categorical_cols: ["jednostka"]
+  geom_col: "geometry"
+  hex_id_col: "hex_id"
+  year_col: "year"
+  R_values: [1, 2, 3] # R_values
+  rolling: true   # True: disks (<=R); False: exact rings (==R)
+  min_neighbors: 4
+  prefix: "nbr"
+  out_table: dataset.Parcels_neighborhood_${dataset.resolution}   # !!! IMPORTANT: Update this to match your output table naming convention
+
+
+prune_features: 
+  enabled: false
+  protected_cols:
+    - "year"
+    - "hex_id"
+    - "geometry"
+    - "jednostka"
+  drop_high_nan: true
+  high_nan_threshold: 0.7
+
+  drop_constant: true
+  quasi_constant_unique_ratio: 0.05
+
+  drop_quasi_constant: true
+
+  drop_duplicate_cols: true
+
+  drop_high_corr: true
+  corr_threshold: 0.99
+  corr_method: "pearson"
+
+  numeric_only_for_corr: true
+  return_report: true
+
+join_y_label:
+  enabled: true
+  y_label_col: "y_next" #y_next_2, y_next_3
+

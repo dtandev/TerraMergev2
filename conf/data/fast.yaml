@@ -1,0 +1,14 @@
+# conf/data/fast.yaml
+# @package data
+
+profile: fast
+
+runtime:
+  sample_rows: 100000  # szybkie próby
+
+base_dir: /mnt/c/data/terramerge/EGIB_new/powiat_testowy
+input_glob: "**/*.gdb"
+out_subdir: "parquets"
+output_filename: "data_input.parquet"
+overwrite: false
+only_valid_geometries: true
