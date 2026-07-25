@@ -4,6 +4,7 @@ dataset_table: "dataset.Parcels_neighborhood_r8"
 y_label: "y_next"
 drop_columns: ["geometry", "hex_id"]
 valid_years: [2024, 2023]
+train_max_year: 2022
 inference_years: [2025]
 model_output_dir: "artifacts/models/parcel_r8_full_1y/"
 
@@ -15,6 +16,7 @@ early_stopping_rounds: 100
 log_eval_period: 50
 
 # eval controls
+n_perm_repeats: 5           # quick AP permutation-importance pass (top-20 display)
 perm_significance: true
 perm_n_repeats: 25          # zamiast 100
 perm_compute_brier: false   # wyłącz drugi przebieg

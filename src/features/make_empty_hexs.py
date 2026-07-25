@@ -1,12 +1,11 @@
 # src/features/make_hexagons.py
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import List, Set, Tuple
 
 import duckdb
 import geopandas as gpd
-import json
 import pandas as pd
 import shapely
 from loguru import logger
@@ -15,20 +14,11 @@ from shapely import set_srid, to_wkb
 from shapely.geometry import Polygon
 from shapely.geometry.multipolygon import MultiPolygon
 
-BBox = Tuple[float, float, float, float]
+from src.common.config_utils import sel as _sel
+
+BBox = tuple[float, float, float, float]
 
 # ---------------- Utils ---------------- #
-
-def _sel(cfg: DictConfig, path: str, default=None):
-    """
-    Safe selection from OmegaConf using dot path.
-    """
-    cur = cfg
-    for part in path.split("."):
-        if cur is None or part not in cur:
-            return default
-        cur = cur[part]
-    return cur
 
 
 def _resolve_db_path(cfg: DictConfig) -> Path:
@@ -65,6 +55,7 @@ def _get_hex_node(cfg: DictConfig):
 
 
 # ---------------- Data loading ---------------- #
+
 
 def _load_parcels_as_gdf_4326(
     db_path: Path,
@@ -115,6 +106,7 @@ def _load_parcels_as_gdf_4326(
 
 # ---------------- H3 helpers ---------------- #
 
+
 def _import_h3_for_polyfill():
     """
     Import an h3 module exposing `polyfill` and `h3_to_geo_boundary`.
@@ -125,7 +117,9 @@ def _import_h3_for_polyfill():
         h3-like module with polyfill(...) and h3_to_geo_boundary(...).
     """
     import importlib
+
     import h3 as h3_top
+
     # Some envs (or h3 4.x minimal) might not expose polyfill at top-level:
     if not hasattr(h3_top, "polyfill"):
         h3_top = importlib.import_module("h3.api.basic_str")
@@ -182,15 +176,15 @@ def _build_hexes_for_year_v3(
     h3_mod = _import_h3_for_polyfill()
 
     # H3 polyfill for dissolved parts
-    cells: Set[str] = set()
+    cells: set[str] = set()
     for poly in parts:
         gj = json.loads(shapely.to_geojson(poly))  # GeoJSON Polygon
         # enforce GeoJSON axis order (lon, lat)
         cells.update(h3_mod.polyfill(gj, res, geo_json_conformant=True))
 
     # H3 cells → polygons
-    polys: List[Polygon] = []
-    ids: List[str] = []
+    polys: list[Polygon] = []
+    ids: list[str] = []
     for cid in cells:
         ring = h3_mod.h3_to_geo_boundary(cid, geo_json=True)  # [[lon, lat], ...]
         poly = shapely.Polygon(ring)
@@ -208,6 +202,7 @@ def _build_hexes_for_year_v3(
 
 
 # ---------------- Persist to DuckDB ---------------- #
+
 
 def _save_hexes_to_duckdb_ewkb(
     db_path: Path,
@@ -267,6 +262,7 @@ def _save_hexes_to_duckdb_ewkb(
 
 # ---------------- Core ---------------- #
 
+
 def run_make_hexagons(cfg: DictConfig) -> None:
     """
     Hydra entrypoint:
@@ -282,16 +278,16 @@ def run_make_hexagons(cfg: DictConfig) -> None:
         logger.warning("make_hexagons: disabled or missing config – skipping.")
         return
 
-    schema_in   = hex_cfg.get("schema_in", _sel(cfg, "duckdb.schema", "egib"))
-    table_in    = hex_cfg.get("source_table", "DzialkaEwidencyjna")
-    geom_col    = hex_cfg.get("geom_column", "geometry")
-    year_col    = hex_cfg.get("year_column", "year")
-    out_schema  = hex_cfg.get("out_schema", "hex")
-    out_prefix  = hex_cfg.get("out_table_prefix", "Hexagons")
+    schema_in = hex_cfg.get("schema_in", _sel(cfg, "duckdb.schema", "egib"))
+    table_in = hex_cfg.get("source_table", "DzialkaEwidencyjna")
+    geom_col = hex_cfg.get("geom_column", "geometry")
+    year_col = hex_cfg.get("year_column", "year")
+    out_schema = hex_cfg.get("out_schema", "hex")
+    out_prefix = hex_cfg.get("out_table_prefix", "Hexagons")
     resolutions = list(hex_cfg.get("resolutions", [8, 9]))
-    overwrite   = bool(hex_cfg.get("overwrite", True))
+    overwrite = bool(hex_cfg.get("overwrite", True))
     target_srid = int(hex_cfg.get("geom_srid", 2180))
-    year        = int(hex_cfg.get("year"))
+    year = int(hex_cfg.get("year"))
 
     db_path = _resolve_db_path(cfg)
     full_in = f'{schema_in}."{table_in}"'

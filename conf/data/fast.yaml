@@ -6,7 +6,7 @@ profile: fast
 runtime:
   sample_rows: 100000  # szybkie próby
 
-base_dir: /mnt/c/data/terramerge/EGIB_new/powiat_testowy
+base_dir: "${oc.env:TERRAMERGE_FAST_BASE_DIR}"
 input_glob: "**/*.gdb"
 out_subdir: "parquets"
 output_filename: "data_input.parquet"

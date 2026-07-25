@@ -3,28 +3,30 @@ from __future__ import annotations
 
 # === Imports ===
 import os
+from collections.abc import Iterable
+
 import duckdb
 import geopandas as gpd
-import pandas as pd
 import numpy as np
-from typing import Iterable, Optional, Tuple
+import pandas as pd
+import shapely.wkb
 from loguru import logger
 from omegaconf import DictConfig
-import shapely.wkb
 from shapely.geometry.base import BaseGeometry
 
 # === Types ===
-BBox = Tuple[float, float, float, float]
+BBox = tuple[float, float, float, float]
 
 # === Constants ===
 PARCEL_GEOM_COL = "geometry"
+
 
 # === Helpers ===
 def _coerce_gdf_geometry(
     df: pd.DataFrame | gpd.GeoDataFrame,
     *,
     geom_col: str = PARCEL_GEOM_COL,
-    target_crs: Optional[str] = None,
+    target_crs: str | None = None,
 ) -> gpd.GeoDataFrame:
     """
     Ensure geometry column is a proper Shapely-backed GeoSeries.
@@ -36,9 +38,12 @@ def _coerce_gdf_geometry(
     s = df[geom_col]
 
     # Fast path: already shapely
-    if isinstance(s.dtype, gpd.array.GeometryDtype) or (len(s) > 0 and isinstance(s.iloc[0], BaseGeometry)):
+    if isinstance(s.dtype, gpd.array.GeometryDtype) or (
+        len(s) > 0 and isinstance(s.iloc[0], BaseGeometry)
+    ):
         gser = gpd.GeoSeries(s, crs=None)
     else:
+
         def _to_bytes(x):
             if x is None or (isinstance(x, float) and pd.isna(x)):
                 return None
@@ -72,19 +77,25 @@ def _coerce_gdf_geometry(
 
     return out
 
+
 def _sanitize_before_save(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
     Drop redundant columns and add 'rok_uchwaly' extracted from 'data_uchwaly' (YYYY).
     Safe to call multiple times (errors='ignore').
     """
     to_drop = [
-        "shape_length", "Shape_Length",
-        "shape_area", "Shape_Area",
-        "obreb", "nr_dzialki", "jednostka",
+        "shape_length",
+        "Shape_Length",
+        "shape_area",
+        "Shape_Area",
+        "obreb",
+        "nr_dzialki",
+        "jednostka",
     ]
     out = gdf.drop(columns=to_drop, errors="ignore").copy()
 
     return out
+
 
 def _gdf_to_wkb_df(gdf: gpd.GeoDataFrame, geom_col: str = "geometry") -> pd.DataFrame:
     """
@@ -102,7 +113,7 @@ def _read_wfs_layer(
     typename: str,
     version: str,
     srsname: str,
-    bbox: Optional[BBox] = None,
+    bbox: BBox | None = None,
 ) -> gpd.GeoDataFrame:
     """
     Download WFS layer with bbox filter and fallback engines.
@@ -184,7 +195,9 @@ def run_add_mpzp(cfg: DictConfig) -> None:
                 '''
             ).fetch_df()
         except Exception as e:
-            logger.warning("ST_AsWKB failed ({}). Falling back to raw geometry column.", type(e).__name__)
+            logger.warning(
+                "ST_AsWKB failed ({}). Falling back to raw geometry column.", type(e).__name__
+            )
             parcels_df = con.execute(f'SELECT * FROM egib."{src_layer}"').fetch_df()
             if PARCEL_GEOM_COL in parcels_df.columns:
                 parcels_df = parcels_df.rename(columns={PARCEL_GEOM_COL: "__geom_wkb__"})
@@ -216,7 +229,7 @@ def run_add_mpzp(cfg: DictConfig) -> None:
 
     # --- Fetch WFS layers within bbox, then project to target CRS ---
     przezn = _read_wfs_layer(wfs.url, "ms:przeznaczenia", wfs.version, wfs.srsname, bbox)
-    plany  = _read_wfs_layer(wfs.url, "ms:plany",          wfs.version, wfs.srsname, bbox)
+    plany = _read_wfs_layer(wfs.url, "ms:plany", wfs.version, wfs.srsname, bbox)
 
     if przezn.crs is None:
         przezn = przezn.set_crs(wfs.srsname, allow_override=True)
@@ -224,11 +237,14 @@ def run_add_mpzp(cfg: DictConfig) -> None:
         plany = plany.set_crs(wfs.srsname, allow_override=True)
 
     przezn = przezn.to_crs(target_crs)
-    plany  = plany.to_crs(target_crs)
+    plany = plany.to_crs(target_crs)
 
     _require_columns(przezn, ["etykieta", PARCEL_GEOM_COL], layer_hint="ms:przeznaczenia")
-    _require_columns(plany,  ["data_uchwaly", "oznaczenie", "geotiff", "legenda", PARCEL_GEOM_COL],
-                     layer_hint="ms:plany")
+    _require_columns(
+        plany,
+        ["data_uchwaly", "oznaczenie", "geotiff", "legenda", PARCEL_GEOM_COL],
+        layer_hint="ms:plany",
+    )
 
     # Clean possible self-intersections
     for gdf in (parcels, przezn, plany):
@@ -245,11 +261,11 @@ def run_add_mpzp(cfg: DictConfig) -> None:
     logger.info("Clipping przeznaczenia to AOI")
     przezn_aoi = gpd.clip(przezn, aoi_geom)
     logger.info("Clipping plany to AOI")
-    plany_aoi  = gpd.clip(plany, aoi_geom)
+    plany_aoi = gpd.clip(plany, aoi_geom)
 
     # Optional: tidy columns
     przezn_aoi = _sanitize_before_save(przezn_aoi)
-    plany_aoi  = _sanitize_before_save(plany_aoi)
+    plany_aoi = _sanitize_before_save(plany_aoi)
 
     # Derive 'rok_uchwaly' from 'data_uchwaly' if present
     if "data_uchwaly" in plany_aoi.columns:

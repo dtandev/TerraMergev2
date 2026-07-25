@@ -1,56 +1,27 @@
 # src/modeling/neighborhood.py
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Literal
 
-from omegaconf import OmegaConf
 import duckdb
 import geopandas as gpd
 import numpy as np
-from omegaconf import DictConfig
 import pandas as pd
 from loguru import logger
+from omegaconf import OmegaConf
 
+from src.common.config_utils import sel as _sel
+from src.common.duckdb_utils import connect_duckdb as _connect_spatial
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DuckDB I/O helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _sel(cfg: DictConfig, path: str, default=None):
-    """
-    Safe nested selection from DictConfig using 'dot' path.
-    """
-    cur = cfg
-    for part in path.split("."):
-        if cur is None or part not in cur:
-            return default
-        cur = cur[part]
-    return cur
-
-def _connect_spatial(db_path: Path) -> duckdb.DuckDBPyConnection:
-    """
-    Open a DuckDB connection and load the spatial extension.
-
-    Parameters
-    ----------
-    db_path : Path
-        Path to the DuckDB database file.
-
-    Returns
-    -------
-    duckdb.DuckDBPyConnection
-        Open connection with 'spatial' loaded.
-    """
-    con = duckdb.connect(str(db_path))
-    con.execute("INSTALL spatial;")
-    con.execute("LOAD spatial;")
-    return con
-
-
-def _duckdb_columns(con: duckdb.DuckDBPyConnection, table: str) -> List[str]:
+def _duckdb_columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:
     """
     Return column names for a DuckDB table/view.
 
@@ -69,7 +40,7 @@ def _duckdb_columns(con: duckdb.DuckDBPyConnection, table: str) -> List[str]:
     return [r[1] for r in con.execute(f"PRAGMA table_info('{table}')").fetchall()]
 
 
-def _to_bytes_safe(val: object) -> Optional[bytes]:
+def _to_bytes_safe(val: object) -> bytes | None:
     """
     Convert DuckDB BLOB-like values to bytes (handles bytes/bytearray/memoryview/list[int]).
 
@@ -96,16 +67,23 @@ def _to_bytes_safe(val: object) -> Optional[bytes]:
             return None
     return None
 
+
 def write_geodf_to_duckdb(
     con: duckdb.DuckDBPyConnection,
     gdf: gpd.GeoDataFrame,
     *,
     table: str,
     geom_col: str = "geometry",
-    casts: Optional[Dict[str, str]] = None,
+    srid: int = 2180,
+    casts: dict[str, str] | None = None,
 ) -> int:
     """
     Write a GeoDataFrame to DuckDB, overwriting the target table.
+
+    Takes an already-open `con` (reused across this module's pipeline) rather than a db_path,
+    which is why this isn't just a call to src.common.duckdb_utils.save_geodf_as_ewkb_geometry —
+    that helper opens its own connection, and DuckDB only allows one read-write connection per
+    database file at a time.
 
     Parameters
     ----------
@@ -127,8 +105,13 @@ def write_geodf_to_duckdb(
     int
         Number of rows written.
     """
+    from shapely import set_srid
+    from shapely import to_wkb as _to_wkb
+
     df = gdf.copy()
-    df["__wkb__"] = df.geometry.to_wkb()
+    df["__wkb__"] = df.geometry.apply(
+        lambda g: _to_wkb(set_srid(g, srid), include_srid=True) if g is not None else None
+    )
     non_geo_cols = [c for c in df.columns if c != gdf.geometry.name]
     con.register("df_in", df[non_geo_cols])
 
@@ -141,24 +124,27 @@ def write_geodf_to_duckdb(
     cols_sql_str = ", ".join(cols_sql)
     sep = ", " if cols_sql_str else ""
     con.execute(f"DROP TABLE IF EXISTS {table}")
+    # ST_SetCRS makes the SRID embedded via to_wkb(include_srid=True) actually queryable through
+    # ST_CRS() afterwards — ST_GeomFromWKB alone does not surface it in this DuckDB spatial version.
     con.execute(f"""
         CREATE TABLE {table} AS
         SELECT
             {cols_sql_str}{sep}
-            ST_GeomFromWKB(__wkb__) AS {geom_col}
+            ST_SetCRS(ST_GeomFromWKB(__wkb__), 'EPSG:{int(srid)}') AS {geom_col}
         FROM df_in
     """)
     return len(df)
 
+
 def load_tables_with_labels_2180(
     db_path: Path,
     *,
-    tables_to_split: List[str],
+    tables_to_split: list[str],
     table_with_labels: str,
-    label_cols: List[str] = ["split_proxy"],
+    label_cols: list[str] = ["split_proxy"],
     geom_col: str = "geometry",
-    join_keys: Tuple[str, str] = ("hex_id", "year"),
-) -> Dict[str, gpd.GeoDataFrame]:
+    join_keys: tuple[str, str] = ("hex_id", "year"),
+) -> dict[str, gpd.GeoDataFrame]:
     """
     Load multiple DuckDB tables into (Geo)DataFrames and LEFT-join selected label
     columns from `table_with_labels` on `join_keys`. Geometry (if present) is read
@@ -191,7 +177,7 @@ def load_tables_with_labels_2180(
     lbl_q = f"SELECT {', '.join(lbl_select_cols)} FROM {table_with_labels}"
     labels_df: pd.DataFrame = con.execute(lbl_q).fetchdf().drop_duplicates(subset=["__k1", "__k2"])
 
-    out: Dict[str, gpd.GeoDataFrame] = {}
+    out: dict[str, gpd.GeoDataFrame] = {}
 
     for tbl in tables_to_split:
         cols = set(_duckdb_columns(con, tbl))
@@ -227,11 +213,11 @@ def load_tables_with_labels_2180(
 
 
 def merge_neighborhood_dict_sequential(
-    tables: Dict[str, gpd.GeoDataFrame],
+    tables: dict[str, gpd.GeoDataFrame],
     *,
-    keys: Tuple[str, str] = ("hex_id", "year"),
+    keys: tuple[str, str] = ("hex_id", "year"),
     geom_col: str = "geometry",
-    base: Optional[str] = None,
+    base: str | None = None,
     enforce_one_to_one: bool = True,
     keep_source_prefix: bool = True,
     unify_cols: Iterable[str] = ("split_proxy", "jednostka"),
@@ -272,7 +258,7 @@ def merge_neighborhood_dict_sequential(
     if not items:
         return gpd.GeoDataFrame(columns=[key_a, key_b, geom_col], geometry=geom_col)
 
-    unify: Set[str] = set(unify_cols or ())
+    unify: set[str] = set(unify_cols or ())
 
     if base is None:
         base_name, merged = items[0][0], items[0][1].copy()
@@ -297,11 +283,7 @@ def merge_neighborhood_dict_sequential(
             raise ValueError(f"Table '{name}' has non-unique keys {keys}.")
 
         if keep_source_prefix:
-            rename_map = {
-                c: f"{name}__{c}"
-                for c in tmp.columns
-                if c not in (*keys, *unify)
-            }
+            rename_map = {c: f"{name}__{c}" for c in tmp.columns if c not in (*keys, *unify)}
             tmp = tmp.rename(columns=rename_map)
 
         merged = merged.merge(
@@ -330,7 +312,8 @@ def merge_neighborhood_dict_sequential(
 # H3 neighbors: exact rings vs rolling disks
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _import_h3() -> Tuple[object, bool, Optional[Callable], Optional[Callable], Optional[Callable]]:
+
+def _import_h3() -> tuple[object, bool, Callable | None, Callable | None, Callable | None]:
     """
     Import H3 with v4→v3 fallback and return handy callables.
 
@@ -340,9 +323,11 @@ def _import_h3() -> Tuple[object, bool, Optional[Callable], Optional[Callable], 
     """
     try:
         from h3.api import basic_str as h3s  # type: ignore
+
         is_v4 = True
     except Exception:
         import h3 as h3s  # type: ignore
+
         is_v4 = False
 
     grid_disk = getattr(h3s, "grid_disk", None) or getattr(h3s, "gridDisk", None)
@@ -352,7 +337,7 @@ def _import_h3() -> Tuple[object, bool, Optional[Callable], Optional[Callable], 
 
 
 @lru_cache(maxsize=100_000)
-def _neighbors_exact_ring(cell: str, ring: int) -> List[str]:
+def _neighbors_exact_ring(cell: str, ring: int) -> list[str]:
     """
     Return neighbors at exact graph distance == ring (not <= ring).
 
@@ -393,11 +378,13 @@ def _neighbors_exact_ring(cell: str, ring: int) -> List[str]:
         prev = set(k_ring(cell, ring - 1))
         return list(kr - prev)
 
-    raise RuntimeError("No suitable H3 neighbor function available (grid_ring/grid_disk/k_ring not found).")
+    raise RuntimeError(
+        "No suitable H3 neighbor function available (grid_ring/grid_disk/k_ring not found)."
+    )
 
 
 @lru_cache(maxsize=100_000)
-def _neighbors_disk(cell: str, ring: int) -> List[str]:
+def _neighbors_disk(cell: str, ring: int) -> list[str]:
     """
     Return neighbors at graph distance <= ring (disk), excluding `cell`.
 
@@ -435,12 +422,14 @@ def _neighbors_disk(cell: str, ring: int) -> List[str]:
     if k_ring is not None:
         return list(set(k_ring(cell, ring)) - {cell})
 
-    raise RuntimeError("No suitable H3 neighbor function available (grid_disk/grid_ring/k_ring not found).")
+    raise RuntimeError(
+        "No suitable H3 neighbor function available (grid_disk/grid_ring/k_ring not found)."
+    )
 
 
 def build_h3_neighbors_edges(
     cells: Iterable[str],
-    R_values: Union[int, Iterable[int]],
+    R_values: int | Iterable[int],
     *,
     rolling: bool = True,
 ) -> pd.DataFrame:
@@ -466,17 +455,17 @@ def build_h3_neighbors_edges(
     pd.DataFrame
         Columns: ['cell', 'neighbor', 'R'] filtered to provided `cells`.
     """
-    cells_list: List[str] = list(dict.fromkeys(cells))
+    cells_list: list[str] = list(dict.fromkeys(cells))
     cells_set = set(cells_list)
 
     if isinstance(R_values, int):
-        rings: Tuple[int, ...] = (int(R_values),)
+        rings: tuple[int, ...] = (int(R_values),)
     else:
         rings = tuple(sorted({int(r) for r in R_values if int(r) >= 1}))
     if not rings:
         return pd.DataFrame(columns=["cell", "neighbor", "R"])
 
-    rows: List[Tuple[str, str, int]] = []
+    rows: list[tuple[str, str, int]] = []
 
     if rolling:
         for c in cells_list:
@@ -501,7 +490,8 @@ def build_h3_neighbors_edges(
 # Aggregation over neighbors (same-year t)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _most_frequent_non_null(values: pd.Series) -> Optional[str]:
+
+def _most_frequent_non_null(values: pd.Series) -> str | None:
     """
     Return the most frequent non-null value (mode). If tie, pick the first by count order.
 
@@ -521,6 +511,7 @@ def _most_frequent_non_null(values: pd.Series) -> Optional[str]:
     counts = s.value_counts()
     return counts.index[0] if not counts.empty else None
 
+
 def compute_neighbor_aggregates(
     df: pd.DataFrame,
     *,
@@ -528,7 +519,7 @@ def compute_neighbor_aggregates(
     year_col: str = "year",
     categorical_cols: Iterable[str] = ("jednostka",),
     geometry_col: str = "geometry",
-    R_values: Union[int, Iterable[int]] = (1, 2),
+    R_values: int | Iterable[int] = (1, 2),
     rolling: bool = True,  # True: disks (<=R); False: exact rings (==R)
     min_neighbors: int = 1,
     prefix: str = "nbr",
@@ -578,7 +569,9 @@ def compute_neighbor_aggregates(
 
     cat_set = set(categorical_cols or ())
     exclude = {hex_col, year_col, geometry_col} | cat_set
-    numeric_cols: List[str] = [c for c in df.select_dtypes(include=[np.number]).columns if c not in exclude]
+    numeric_cols: list[str] = [
+        c for c in df.select_dtypes(include=[np.number]).columns if c not in exclude
+    ]
 
     # Normalize R_values to a sorted unique list of ints
     if isinstance(R_values, (int, np.integer)):
@@ -611,15 +604,12 @@ def compute_neighbor_aggregates(
 
         # Build (hex,year) x neighbors frame for this R
         baseR = df[[hex_col, year_col]].drop_duplicates()
-        frame = (
-            baseR.merge(
-                edges_R.rename(columns={"cell": hex_col}),
-                on=hex_col,
-                how="left",
-                validate="many_to_many",
-            )
-            .rename(columns={"neighbor": "__nbr__"})
-        )
+        frame = baseR.merge(
+            edges_R.rename(columns={"cell": hex_col}),
+            on=hex_col,
+            how="left",
+            validate="many_to_many",
+        ).rename(columns={"neighbor": "__nbr__"})
 
         # Count neighbors present in df for the same year
         f_cnt = frame.merge(df_keys, on=["__nbr__", year_col], how="left", suffixes=("", "_hit"))
@@ -639,9 +629,13 @@ def compute_neighbor_aggregates(
         if numeric_cols and not valid_keys.empty:
             nbr_vals = df[[hex_col, year_col] + numeric_cols].rename(columns={hex_col: "__nbr__"})
             f_same = frame.merge(nbr_vals, on=["__nbr__", year_col], how="left")
-            g_num = f_same.groupby([hex_col, year_col], dropna=False)[numeric_cols].agg(["mean", "median"])
+            g_num = f_same.groupby([hex_col, year_col], dropna=False)[numeric_cols].agg(
+                ["mean", "median"]
+            )
             # Flatten columns and add r{R} suffix
-            g_num.columns = [f"{prefix}_r{R}_{c}_{stat}" for c, stat in g_num.columns.to_flat_index()]
+            g_num.columns = [
+                f"{prefix}_r{R}_{c}_{stat}" for c, stat in g_num.columns.to_flat_index()
+            ]
             g_num = g_num.reset_index()
             # Keep only valid (hex,year) if min_neighbors applies
             g_num = valid_keys.merge(g_num, on=[hex_col, year_col], how="left")
@@ -672,7 +666,7 @@ def prune_features(
     df: pd.DataFrame,
     *,
     # what to keep/protect
-    protect_cols: Optional[Iterable[str]] = None,
+    protect_cols: Iterable[str] | None = None,
     # cleaning flags
     drop_high_nan: bool = True,
     drop_constant: bool = True,
@@ -680,15 +674,15 @@ def prune_features(
     drop_duplicate_cols: bool = True,
     drop_high_corr: bool = True,
     # parameters
-    nan_threshold: float = 0.5,                 # drop if share of NaN > threshold
+    nan_threshold: float = 0.5,  # drop if share of NaN > threshold
     quasi_constant_unique_ratio: float = 0.01,  # unique_count / nonNaN_count <= thr -> drop
-    corr_threshold: float = 0.95,               # |corr| >= thr -> drop one
+    corr_threshold: float = 0.95,  # |corr| >= thr -> drop one
     corr_method: Literal["pearson", "spearman"] = "pearson",
     # scope
     numeric_only_for_corr: bool = True,
     # report
     return_report: bool = True,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Prune useless or redundant feature columns with configurable steps.
 
@@ -728,11 +722,10 @@ def prune_features(
       very close-but-not-identical floats nie będą złączone.
     """
     protect: set[str] = set(protect_cols or [])
-    report_rows: List[Dict[str, str]] = []
+    report_rows: list[dict[str, str]] = []
 
     # Work on a copy of columns list to preserve order decisions
     cols = list(df.columns)
-    n_rows = len(df)
 
     # Step 0: precompute simple stats
     na_share = df.isna().mean()
@@ -746,7 +739,9 @@ def prune_features(
                 continue
             if na_share.get(c, 0.0) > nan_threshold:
                 to_drop.add(c)
-                report_rows.append({"column": c, "reason": "high_nan", "detail": f"nan_share={na_share[c]:.3f}"})
+                report_rows.append(
+                    {"column": c, "reason": "high_nan", "detail": f"nan_share={na_share[c]:.3f}"}
+                )
 
     # Step 2: constant & quasi-constant (evaluate on non-NaN values)
     if drop_constant or drop_quasi_constant:
@@ -763,20 +758,28 @@ def prune_features(
             nunique = s.nunique(dropna=True)
             if drop_constant and nunique <= 1:
                 to_drop.add(c)
-                report_rows.append({"column": c, "reason": "constant", "detail": f"unique={nunique}"})
+                report_rows.append(
+                    {"column": c, "reason": "constant", "detail": f"unique={nunique}"}
+                )
                 continue
             if drop_quasi_constant:
                 ratio = nunique / float(len(s))
                 if ratio <= quasi_constant_unique_ratio:
                     to_drop.add(c)
-                    report_rows.append({"column": c, "reason": "quasi_constant", "detail": f"unique_ratio={ratio:.5f}"})
+                    report_rows.append(
+                        {
+                            "column": c,
+                            "reason": "quasi_constant",
+                            "detail": f"unique_ratio={ratio:.5f}",
+                        }
+                    )
 
     # Step 3: duplicate columns (exact)
     if drop_duplicate_cols:
         # Fill NaN with a sentinel that won't collide with real values
         sentinel = object()
         # Use tuples of values for hashing (fast but memory-aware)
-        seen: Dict[Tuple, str] = {}
+        seen: dict[tuple, str] = {}
         for c in cols:
             if c in protect or c in to_drop:
                 continue
@@ -784,14 +787,20 @@ def prune_features(
             v = tuple(sentinel if pd.isna(x) else x for x in df[c].tolist())
             if v in seen:
                 to_drop.add(c)
-                report_rows.append({"column": c, "reason": "duplicate_col", "detail": f"duplicate_of={seen[v]}"})
+                report_rows.append(
+                    {"column": c, "reason": "duplicate_col", "detail": f"duplicate_of={seen[v]}"}
+                )
             else:
                 seen[v] = c
 
     # Step 4: high correlations (numeric scope)
     if drop_high_corr:
         if numeric_only_for_corr:
-            num_cols = [c for c in cols if c not in to_drop and c not in protect and pd.api.types.is_numeric_dtype(df[c])]
+            num_cols = [
+                c
+                for c in cols
+                if c not in to_drop and c not in protect and pd.api.types.is_numeric_dtype(df[c])
+            ]
         else:
             # try coercion: only keep columns convertible to numeric
             num_cols = []
@@ -813,9 +822,9 @@ def prune_features(
             corr = df[num_cols].corr(method=corr_method, min_periods=1)
             # Greedy selection of columns to drop
             # Evaluate pairs on upper triangle
-            tri_pairs: List[Tuple[str, str, float]] = []
+            tri_pairs: list[tuple[str, str, float]] = []
             for i, a in enumerate(num_cols):
-                for b in num_cols[i+1:]:
+                for b in num_cols[i + 1 :]:
                     val = corr.loc[a, b]
                     if pd.notna(val) and abs(val) >= corr_threshold:
                         tri_pairs.append((a, b, float(val)))
@@ -855,14 +864,15 @@ def prune_features(
                         continue  # both protected -> skip
                 to_drop.add(drop)
                 dropped_corr.add(drop)
-                report_rows.append({
-                    "column": drop,
-                    "reason": "high_corr",
-                    "detail": f"with={a if drop==b else b}; corr={v:.3f}; keep={keep}"
-                })
+                report_rows.append(
+                    {
+                        "column": drop,
+                        "reason": "high_corr",
+                        "detail": f"with={a if drop == b else b}; corr={v:.3f}; keep={keep}",
+                    }
+                )
 
     # Build output
-    drop_list = [c for c in cols if c in to_drop]
     kept_cols = [c for c in cols if c not in to_drop]
     clean = df[kept_cols].copy()
 
@@ -873,9 +883,6 @@ def prune_features(
         # still return a minimal report to comply with type hints
         return clean, report_df
 
-from typing import Tuple, Optional
-import pandas as pd
-from loguru import logger
 
 def debug_print_key_duplicates(
     clean_df: pd.DataFrame,
@@ -883,8 +890,8 @@ def debug_print_key_duplicates(
     *,
     hex_col: str = "hex_id",
     year_col: str = "year",
-    sample: int = 20
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    sample: int = 20,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Print and return duplicate-key rows for (year, hex_id) in both left (clean_df) and right (y_labels).
 
@@ -928,35 +935,41 @@ def debug_print_key_duplicates(
     logger.info("Left (clean_df) rows: {}", len(clean_df))
     logger.info("Right (y_labels) rows: {}", len(y_labels))
 
-    logger.info("Left duplicate key groups: {}", 
-                (left_dups.groupby([hex_col, year_col]).size() > 1).sum())
-    logger.info("Right duplicate key groups: {}", 
-                (right_dups.groupby([hex_col, year_col]).size() > 1).sum())
+    logger.info(
+        "Left duplicate key groups: {}", (left_dups.groupby([hex_col, year_col]).size() > 1).sum()
+    )
+    logger.info(
+        "Right duplicate key groups: {}", (right_dups.groupby([hex_col, year_col]).size() > 1).sum()
+    )
 
     # Show top offenders by group size on each side
     if not left_dups.empty:
         logger.warning("Sample LEFT duplicate groups (size desc):")
-        left_grp = (left_dups.groupby([hex_col, year_col])
-                             .size()
-                             .sort_values(ascending=False)
-                             .head(10))
+        left_grp = (
+            left_dups.groupby([hex_col, year_col]).size().sort_values(ascending=False).head(10)
+        )
         for (hx, yr), cnt in left_grp.items():
             logger.warning(" LEFT key=(hex_id={}, year={}) -> {} rows", hx, yr, cnt)
 
-        logger.warning("Sample LEFT duplicate rows (first {}):\n{}", 
-                       min(sample, len(left_dups)), left_dups.head(sample).to_string(index=False))
+        logger.warning(
+            "Sample LEFT duplicate rows (first {}):\n{}",
+            min(sample, len(left_dups)),
+            left_dups.head(sample).to_string(index=False),
+        )
 
     if not right_dups.empty:
         logger.warning("Sample RIGHT duplicate groups (size desc):")
-        right_grp = (right_dups.groupby([hex_col, year_col])
-                               .size()
-                               .sort_values(ascending=False)
-                               .head(10))
+        right_grp = (
+            right_dups.groupby([hex_col, year_col]).size().sort_values(ascending=False).head(10)
+        )
         for (hx, yr), cnt in right_grp.items():
             logger.warning(" RIGHT key=(hex_id={}, year={}) -> {} rows", hx, yr, cnt)
 
-        logger.warning("Sample RIGHT duplicate rows (first {}):\n{}", 
-                       min(sample, len(right_dups)), right_dups.head(sample).to_string(index=False))
+        logger.warning(
+            "Sample RIGHT duplicate rows (first {}):\n{}",
+            min(sample, len(right_dups)),
+            right_dups.head(sample).to_string(index=False),
+        )
 
     if left_dups.empty and right_dups.empty:
         logger.success("No duplicate (year, hex_id) keys found on either side.")
@@ -1008,21 +1021,14 @@ def run_compute_neighbor_aggregates(cfg) -> None:
 
     # Ensure list interpolation is materialized (e.g., ${dataset.resolution} -> r8)
     tables_to_split = OmegaConf.to_container(
-        _sel(cfg, "dataset.calculate_neighborhood.tables_to_split"),
-        resolve=True
+        _sel(cfg, "dataset.calculate_neighborhood.tables_to_split"), resolve=True
     )
 
-    table_with_labels = _sel(
-        cfg, "dataset.calculate_neighborhood.table_with_labels", default=""
-    )
+    table_with_labels = _sel(cfg, "dataset.calculate_neighborhood.table_with_labels", default="")
 
-    proxy_cols = _sel(
-        cfg, "dataset.calculate_neighborhood.proxy_cols", default=[]
-    )
+    proxy_cols = _sel(cfg, "dataset.calculate_neighborhood.proxy_cols", default=[])
 
-    keys = _sel(
-        cfg, "dataset.calculate_neighborhood.keys", default=[]
-    )
+    keys = _sel(cfg, "dataset.calculate_neighborhood.keys", default=[])
 
     logger.info(
         f"Merging tables ({len(tables_to_split)}): {tables_to_split} | labels: {table_with_labels} | label_cols: {proxy_cols}"
@@ -1033,7 +1039,7 @@ def run_compute_neighbor_aggregates(cfg) -> None:
         db_path=db_path,
         tables_to_split=tables_to_split,
         table_with_labels=table_with_labels,
-        label_cols=proxy_cols
+        label_cols=proxy_cols,
     )
 
     logger.debug(f"Loaded {len(merged_dict)} tables into memory.")
@@ -1044,7 +1050,7 @@ def run_compute_neighbor_aggregates(cfg) -> None:
         geom_col="geometry",
         base=None,
         enforce_one_to_one=True,
-        keep_source_prefix=False
+        keep_source_prefix=False,
     )
     logger.info(f"Merged frame: rows={len(merged_df)}, cols={len(merged_df.columns)}")
 
@@ -1070,10 +1076,10 @@ def run_compute_neighbor_aggregates(cfg) -> None:
         year_col=year_col,
         categorical_cols=tuple(categorical_cols),
         geometry_col=geom_col,
-        R_values=R_values,          # any set of rings
-        rolling=rolling,            # True: disks (<=R); False: exact rings
+        R_values=R_values,  # any set of rings
+        rolling=rolling,  # True: disks (<=R); False: exact rings
         min_neighbors=min_neighbors,
-        prefix=prefix
+        prefix=prefix,
     )
 
     # A tiny diagnostic snapshot (avoid dumping full DF to logs)
@@ -1093,8 +1099,7 @@ def run_compute_neighbor_aggregates(cfg) -> None:
         logger.info("Pruning features...")
 
         protected_cols = OmegaConf.to_container(
-            _sel(cfg, "dataset.prune_features.protected_cols", ""),
-            resolve=True
+            _sel(cfg, "dataset.prune_features.protected_cols", ""), resolve=True
         )
 
         drop_high_nan = _sel(cfg, "dataset.prune_features.drop_high_nan", True)
@@ -1103,10 +1108,12 @@ def run_compute_neighbor_aggregates(cfg) -> None:
         drop_duplicate_cols = _sel(cfg, "dataset.prune_features.drop_duplicate_cols", True)
         drop_high_corr = _sel(cfg, "dataset.prune_features.drop_high_corr", True)
         nan_threshold = _sel(cfg, "dataset.prune_features.nan_threshold", 0.7)
-        quasi_constant_unique_ratio = _sel(cfg, "dataset.prune_features.quasi_constant_unique_ratio", 0.01)
+        quasi_constant_unique_ratio = _sel(
+            cfg, "dataset.prune_features.quasi_constant_unique_ratio", 0.01
+        )
         corr_threshold = _sel(cfg, "dataset.prune_features.corr_threshold", 0.95)
         corr_method = _sel(cfg, "dataset.prune_features.corr_method", "pearson")
-        numeric_only_for_corr = _sel(cfg, "dataset.prune_features.numeric_only_for_corr", True)    
+        numeric_only_for_corr = _sel(cfg, "dataset.prune_features.numeric_only_for_corr", True)
         return_report = _sel(cfg, "dataset.prune_features.return_report", True)
 
         clean_df, report = prune_features(
@@ -1117,15 +1124,17 @@ def run_compute_neighbor_aggregates(cfg) -> None:
             drop_quasi_constant=drop_quasi_constant,
             drop_duplicate_cols=drop_duplicate_cols,
             drop_high_corr=drop_high_corr,
-            nan_threshold=nan_threshold,                 # np. wytnij kolumny z >50% NaN
+            nan_threshold=nan_threshold,  # np. wytnij kolumny z >50% NaN
             quasi_constant_unique_ratio=quasi_constant_unique_ratio,  # <=1% unikatów wśród nie-NaN
-            corr_threshold=corr_threshold,               # usuń |corr| >= 0.95
+            corr_threshold=corr_threshold,  # usuń |corr| >= 0.95
             corr_method=corr_method,
             numeric_only_for_corr=numeric_only_for_corr,
             return_report=return_report,
         )
 
-        logger.info(f"Pruned features: from {len(merged_with_neighbors.columns)} to {len(clean_df.columns)} columns.")
+        logger.info(
+            f"Pruned features: from {len(merged_with_neighbors.columns)} to {len(clean_df.columns)} columns."
+        )
         logger.debug(f"Pruning report:\n{report}")
     else:
         logger.info("Feature pruning step skipped (disabled).")
@@ -1133,17 +1142,17 @@ def run_compute_neighbor_aggregates(cfg) -> None:
 
     con = _connect_spatial(db_path)
 
-    if _sel(cfg, "dataset.join_y_label.enable", True):
+    if _sel(cfg, "dataset.join_y_label.enabled", True):
         y_label_col = _sel(cfg, "dataset.join_y_label.y_label_col", "y_next")
         y_labels_df = con.execute(f"SELECT * FROM {table_with_labels}").df()
         logger.info(f"Re-joining y_label column '{y_label_col}' to cleaned dataframe...")
 
-        #left_dups, right_dups = debug_print_key_duplicates(clean_df, y_labels, hex_col="hex_id", year_col="year")
+        # left_dups, right_dups = debug_print_key_duplicates(clean_df, y_labels, hex_col="hex_id", year_col="year")
         clean_df_with_y = clean_df.merge(
             y_labels_df[[hex_col, year_col, y_label_col]],
             on=[hex_col, year_col],
             how="left",
-            validate="one_to_one"
+            validate="one_to_one",
         )
         logger.info(f"Re-joined y_label column '{y_label_col}' to cleaned dataframe.")
     else:
@@ -1155,7 +1164,7 @@ def run_compute_neighbor_aggregates(cfg) -> None:
     clean_df_with_y.to_parquet("cleaned_labels.parquet", index=False)
 
     if len(clean_df) == 0:
-        logger.warning(f"Brak wierszy do zapisu. Zapis pominięty.")
+        logger.warning("Brak wierszy do zapisu. Zapis pominięty.")
     else:
         if con is not None:
             logger.info(f"Połączono z bazą DuckDB → {db_path}")

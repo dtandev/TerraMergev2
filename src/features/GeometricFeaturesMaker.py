@@ -1,8 +1,12 @@
 # features/geometric_feat_eng.py
 
+import math
+
 import geopandas as gpd
-import pandas as pd
 import numpy as np
+import pandas as pd
+from shapely.geometry import MultiPolygon, Polygon
+
 
 #######################################################################
 # 1. Rozmiar i skala --------------------------------------------------
@@ -21,7 +25,7 @@ class SizeScaleFeatures:
 
     Wymagania
     ----------
-    • GeoDataFrame musi być w **układzie metrycznym** (np. EPSG:2180).  
+    • GeoDataFrame musi być w **układzie metrycznym** (np. EPSG:2180).
       Jeśli CRS jest geograficzny (°), metoda zgłosi wyjątek.
 
     Cechy generowane przez `transform()`
@@ -30,38 +34,38 @@ class SizeScaleFeatures:
         Powierzchnia działki w metrach kwadratowych.
         **Za co odpowiada?** Wielkość nominalna parceli (podstawa wszystkich wskaźników intensywności zagospodarowania).
         **Zastosowania w analizie strukturalnej**:
-        – Hierarchizacja działek wg wielkości (np. mikro-, małe-, średnie-, makro-parcele).  
-        – Normalizacja parametrów zabudowy: FAR (floor-area-ratio), GFA, udział biologicznie czynny.  
+        – Hierarchizacja działek wg wielkości (np. mikro-, małe-, średnie-, makro-parcele).
+        – Normalizacja parametrów zabudowy: FAR (floor-area-ratio), GFA, udział biologicznie czynny.
         – Filtracja anomalii (działki zerowe lub > 99 percentyla) przed dalszą analizą.
 
     perimeter_m : float
         Długość obwodu działki w metrach.
         **Za co odpowiada?** „Kontakt” działki ze światem zewnętrznym; proxy kosztu ogrodzenia, uzbrojenia.
         **Zastosowania w analizie strukturalnej**:
-        – Szacowanie kosztu infrastruktury liniowej (ogrodzenie, chodnik przyfrontowy).  
-        – Razem z area_m2 tworzy wskaźniki kompaktowości (Isoperimetric Quotient, Polsby-Popper).  
+        – Szacowanie kosztu infrastruktury liniowej (ogrodzenie, chodnik przyfrontowy).
+        – Razem z area_m2 tworzy wskaźniki kompaktowości (Isoperimetric Quotient, Polsby-Popper).
         – Wykrywanie działek z bardzo rozczłonkowaną granicą (wysoki P przy niskim A).
 
     log_area : float
         Logarytm naturalny z powierzchni.
         **Za co odpowiada?** Stabilizuje skośny rozkład dużych/małych działek, zbliżając go do normalnego.
         **Zastosowania w analizie strukturalnej**:
-        – Poprawia interpretowalność współczynników regresji liniowych (mniej wrażliwe na outliery).  
+        – Poprawia interpretowalność współczynników regresji liniowych (mniej wrażliwe na outliery).
         – Przygotowuje dane pod PCA / t-SNE, redukując dominację największych parcel.
 
     log_perimeter : float
         Logarytm naturalny z obwodu.
         **Za co odpowiada?** Ta sama idea co powyżej, lecz dla krawędzi; wzmacnia zależności addytywne.
         **Zastosowania w analizie strukturalnej**:
-        – Modele predykcyjne ceny gruntu, w których stroma relacja (długość ogrodzenia vs. koszt) może być nieliniowa.  
+        – Modele predykcyjne ceny gruntu, w których stroma relacja (długość ogrodzenia vs. koszt) może być nieliniowa.
         – Łączenie z log_area do tworzenia cech interakcyjnych (np. log_area / log_perimeter).
 
     mean_width : float
         Średnia szerokość działki obliczana jako `2 * area / perimeter`.
         **Za co odpowiada?** Przybliża „typową” szerokość prostokąta o tym samym obwodzie i powierzchni.
         **Zastosowania w analizie strukturalnej**:
-        – Ocena potencjalnej szerokości frontu zabudowy (istotne w planowaniu ulicznym).  
-        – Klasyfikacja morfologii na paskowe/narożne kontra zwarte działki.  
+        – Ocena potencjalnej szerokości frontu zabudowy (istotne w planowaniu ulicznym).
+        – Klasyfikacja morfologii na paskowe/narożne kontra zwarte działki.
         – Używana jako szybki heurystyczny filtr przy szukaniu parcel o minimalnej szerokości wg MPZP.
         **Niższa wartość** ⇒ paskowa parcelacja; **wyższa** ⇒ front szeroki.
     """
@@ -76,9 +80,13 @@ class SizeScaleFeatures:
     def _validate_crs(self, gdf: gpd.GeoDataFrame) -> None:
         """Sprawdza, czy GeoDataFrame ma ustawiony metryczny CRS."""
         if gdf.crs is None:
-            raise ValueError("GeoDataFrame nie ma ustawionego CRS – przereprojekuj do układu metrów, np. EPSG:2180.")
+            raise ValueError(
+                "GeoDataFrame nie ma ustawionego CRS – przereprojekuj do układu metrów, np. EPSG:2180."
+            )
         if gdf.crs.is_geographic:
-            raise ValueError("CRS wygląda na geograficzny (stopnie). Przekształć najpierw do układu metrycznego.")
+            raise ValueError(
+                "CRS wygląda na geograficzny (stopnie). Przekształć najpierw do układu metrycznego."
+            )
 
     # -------------------------------------------------------------
     # API główne
@@ -105,13 +113,16 @@ class SizeScaleFeatures:
         # Uwaga: perimeter == 0 powinien wystąpić tylko przy niepoprawnych geometriach
         perimeter_safe = perimeter.replace(0, np.nan)
 
-        features = pd.DataFrame({
-            "area_ha": (area/10_000).round(4),  # powierzchnia w hektarach
-            "perimeter_m": perimeter.round(1),
-            "log_area": np.log(area),
-            "log_perimeter": np.log(perimeter_safe),
-            "mean_width": 2 * area / perimeter_safe
-        }, index=gdf.index)
+        features = pd.DataFrame(
+            {
+                "area_ha": (area / 10_000).round(4),  # powierzchnia w hektarach
+                "perimeter_m": perimeter.round(1),
+                "log_area": np.log(area),
+                "log_perimeter": np.log(perimeter_safe),
+                "mean_width": 2 * area / perimeter_safe,
+            },
+            index=gdf.index,
+        )
 
         if self.join:
             # zachowujemy CRS i inne atrybuty GeoDataFrame
@@ -119,20 +130,13 @@ class SizeScaleFeatures:
         return features
 
 
-import geopandas as gpd
-import pandas as pd
-import numpy as np
-from shapely.geometry import Polygon
-from shapely.ops import unary_union
-import math
-
-
 #######################################################################
 # 2. Wydłużenie i orientacja -----------------------------------------
 #######################################################################
 
+
 class ElongationOrientationFeatures:
-    """
+    r"""
     Klasa generuje wskaźniki **wydłużenia i orientacji** działek (grupa 2).
 
     Parametry
@@ -150,23 +154,23 @@ class ElongationOrientationFeatures:
     ------------------------------------
     elongation_mrr : float
         Stosunek długości dłuższej krawędzi **minimalnego prostokąta obrotowego** (MRR)
-        do krawędzi krótszej (\(> 1\)).  
+        do krawędzi krótszej (\(> 1\)).
         **Za co odpowiada?** Kwantyfikuje „smukłość” działki niezależnie od jej rotacji.
         **Zastosowania**: klasyfikacja paskowych parcel, filtr działek o zbyt małej szerokości zabudowy,
         predykcja układu dachu/budynku w modelach ML.
-        **Większa wartość** ⇒ działka węższa i dłuższa (bardziej paskowa).  
+        **Większa wartość** ⇒ działka węższa i dłuższa (bardziej paskowa).
         **Wartość bliska 1** ⇒ kształt zbliżony do kwadratu / koła.
 
     orientation_deg : float
         Kąt (0–180°) głównej osi MRR względem osi *wschód* (EPSG), mierzony
-        **dodatnio przeciwnie do ruchu wskazówek**.  
+        **dodatnio przeciwnie do ruchu wskazówek**.
         **Za co odpowiada?** Kierunek „frontu” działki, przydatny przy analizie ekspozycji
         (insolacja, widok na ulicę).
         **Zastosowania**: klastrowanie działek pod kątem układu ulic, warunków
         nasłonecznienia, planowania sieci PV.
 
     aspect_ratio_bbox : float
-        Proporcja szerokość / wysokość **nierotowanego** bounding‑boxa (BBOX).  
+        Proporcja szerokość / wysokość **nierotowanego** bounding‑boxa (BBOX).
         **Za co odpowiada?** Tańsza obliczeniowo alternatywa elongation_mrr — wrażliwa na orientację.
         **Zastosowania**: szybkie filtrowanie (np. czy działka jest szeroka na front),
         cecha wejściowa do PCA obok elongation_mrr.
@@ -210,7 +214,9 @@ class ElongationOrientationFeatures:
         bbox_ratio = []
         for geom in gdf[self.geometry_column]:
             if geom.is_empty:
-                elong.append(np.nan); orient.append(np.nan); bbox_ratio.append(np.nan)
+                elong.append(np.nan)
+                orient.append(np.nan)
+                bbox_ratio.append(np.nan)
                 continue
             e, ang, *_ = self._mrr_properties(geom)
             elong.append(e)
@@ -219,50 +225,51 @@ class ElongationOrientationFeatures:
             width = maxx - minx
             height = maxy - miny
             bbox_ratio.append(width / height if height else np.nan)
-        features = pd.DataFrame({
-            "elongation_mrr": elong,
-            "orientation_deg": orient,
-            "aspect_ratio_bbox": bbox_ratio
-        }, index=gdf.index)
+        features = pd.DataFrame(
+            {"elongation_mrr": elong, "orientation_deg": orient, "aspect_ratio_bbox": bbox_ratio},
+            index=gdf.index,
+        )
         return gdf.join(features) if self.join else features
+
 
 #######################################################################
 # 3. Kompaktowość i okrągłość ----------------------------------------
 #######################################################################
 
+
 class CompactnessCircularityFeatures:
     """
     **Wskaźniki zwartości (kompaktowości) i „okrągłości” działek** – pozwalają ilościowo
     ocenić, na ile obrys parceli jest regularny, prosty do zagospodarowania, a na ile
-    „postrzępiony” lub wklęsły.  
+    „postrzępiony” lub wklęsły.
     Wszystkie trzy miary zwracają wartości w **zakresie 0 – 1**.
 
-    • **Wartości bliskie 1** → działka zwarta, zbliżona do figury wypukłej (koło / prostokąt).  
+    • **Wartości bliskie 1** → działka zwarta, zbliżona do figury wypukłej (koło / prostokąt).
     • **Wartości bliskie 0** → działka nieregularna, z licznymi wcięciami, cyplami, „ogonami”.
 
     ------------------------------------------------------------------
     Cechy obliczane przez `transform()`
     ------------------------------------------------------------------
-    ipq : Isoperimetric Quotient = \(\displaystyle \frac{4\pi A}{P^{2}}\)
+    ipq : Isoperimetric Quotient = \\(\\displaystyle \frac{4\\pi A}{P^{2}}\\)
         *Porównuje działkę do idealnego koła* – które ma **IPQ = 1.0**.
-        • **> 0.70** – kształt bardzo zwarty (koło, kwadrat).  
-        • **0.40 – 0.70** – typowe prostokąty, trapezy.  
+        • **> 0.70** – kształt bardzo zwarty (koło, kwadrat).
+        • **0.40 – 0.70** – typowe prostokąty, trapezy.
         • **< 0.40** – obrysy rozciągnięte, „wężowe” lub z zatokami.
 
         *Zastosowania*: identyfikacja działek trudnych do podziału, ocena ryzyka
         wysokiego kosztu infrastruktury liniowej.
 
-    rectangularity : \(\displaystyle \frac{A}{A_{\text{MRR}}}\)
+    rectangularity : \\(\\displaystyle \frac{A}{A_{\text{MRR}}}\\)
         Stosunek pola działki do pola **minimalnego prostokąta obrotowego** (MRR).
-        • **R ≈ 1.0** – działka prawie dokładnie prostokątna.  
+        • **R ≈ 1.0** – działka prawie dokładnie prostokątna.
         • **R < 0.6** – znaczna część MRR jest „pusta” – sygnał kształtu litery L, pierścieni itp.
 
         *Zastosowania*: szybka ocena efektywności zabudowy prostokątnej, filtr pod
         podział wtórny (działki "L"‑kształtne często wymagają scalania/przekształceń).
 
-    solidity : \(\displaystyle \frac{A}{A_{\text{convex hull}}}\)
+    solidity : \\(\\displaystyle \frac{A}{A_{\text{convex hull}}}\\)
         Porównuje powierzchnię działki do powierzchni jej **otoczki wypukłej**.
-        • **Solidity ≈ 1.0** – obrys prawie wypukły (brak wklęśnięć).  
+        • **Solidity ≈ 1.0** – obrys prawie wypukły (brak wklęśnięć).
         • **Solidity < 0.5** – silnie wklęsły kształt (np. litera C, pierścień).
 
         *Zastosowania*: identyfikacja działek, gdzie obrys zawiera "dziury" lub
@@ -274,13 +281,13 @@ class CompactnessCircularityFeatures:
     geometry_column : str, domyślnie "geometry"
         Nazwa kolumny z geometrią w GeoDataFrame.
     join : bool, domyślnie True
-        • **True** – wynikowe cechy zostaną **dołączone** do wejściowego GeoDataFrame.  
+        • **True** – wynikowe cechy zostaną **dołączone** do wejściowego GeoDataFrame.
         • **False** – metoda zwróci osobny `pandas.DataFrame`.
 
     ------------------------------------------------------------------
     Wymagania danych
     ------------------------------------------------------------------
-    • GeoDataFrame musi być w **metrycznym CRS** (np. EPSG 2180).  
+    • GeoDataFrame musi być w **metrycznym CRS** (np. EPSG 2180).
     • Geometrie powinny być **poprawne** (użyj `buffer(0)` lub `make_valid()` jeśli są błędy).
 
     ------------------------------------------------------------------
@@ -309,27 +316,22 @@ class CompactnessCircularityFeatures:
         geom = gdf[self.geometry_column]
         area = geom.area
         perimeter = geom.length.replace(0, np.nan)
-        ipq = 4 * math.pi * area / (perimeter ** 2)
+        ipq = 4 * math.pi * area / (perimeter**2)
         mrr_area = geom.apply(lambda g: g.minimum_rotated_rectangle.area)
         rectangularity = area / mrr_area.replace(0, np.nan)
         solidity = area / geom.convex_hull.area.replace(0, np.nan)
-        feat = pd.DataFrame({
-            "ipq": ipq,
-            "rectangularity": rectangularity,
-            "solidity": solidity
-        }, index=gdf.index)
+        feat = pd.DataFrame(
+            {"ipq": ipq, "rectangularity": rectangularity, "solidity": solidity}, index=gdf.index
+        )
         return gdf.join(feat) if self.join else feat
 
-
-
-from shapely.geometry import Polygon, MultiPolygon
 
 #######################################################################
 # 4. Złożoność krawędzi ----------------------------------------------
 #######################################################################
 class EdgeComplexityFeatures:
     """
-    **Miary złożoności (chropowatości) obrysu działki**.  
+    **Miary złożoności (chropowatości) obrysu działki**.
     Pozwalają określić, czy granica parceli jest gładka (prosta) czy bardzo
     „postrzępiona” – co często przekłada się na koszty ogrodzenia, długość linii
     brzegowej, trudności z uzbrojeniem terenu.
@@ -337,14 +339,14 @@ class EdgeComplexityFeatures:
     ------------------------------------------------------------------
     Cechy obliczane przez `transform()`
     ------------------------------------------------------------------
-    complexity_index : \(\displaystyle \text{CI} = \frac{P}{2\sqrt{\pi A}}\)
-        • **CI = 1.0** – idealny okrąg (obrys maksymalnie gładki).  
+    complexity_index : \\(\\displaystyle \text{CI} = \frac{P}{2\\sqrt{\\pi A}}\\)
+        • **CI = 1.0** – idealny okrąg (obrys maksymalnie gładki).
         • **CI > 1.0** – granica coraz bardziej nieregularna; im wyższa wartość,
           tym większa „chropowatość” i długość ogrodzenia przy tej samej powierzchni.
 
-    vertex_density : \(\displaystyle \frac{n_{\text{wierzchołków}}}{P}\)  
+    vertex_density : \\(\\displaystyle \frac{n_{\text{wierzchołków}}}{P}\\)
         Liczba wierzchołków wielokąta przypadająca na 1 metr obwodu.
-        • **Niska wartość** – granica głównie z długich, prostych odcinków.  
+        • **Niska wartość** – granica głównie z długich, prostych odcinków.
         • **Wysoka wartość** – kontur mocno poszarpany (dużo krótkich segmentów).
 
         *Zastosowania*: identyfikacja działek nadrzecznych (meandry), z
@@ -413,9 +415,9 @@ class MomentInertiaFeatures:
     ------------------------------------------------------------------
     Cechy obliczane przez `transform()`
     ------------------------------------------------------------------
-    inertia_ratio : \(\lambda_{\text{max}} / \lambda_{\text{min}}\)
+    inertia_ratio : \\(\\lambda_{\text{max}} / \\lambda_{\text{min}}\\)
         Iloraz największej i najmniejszej wartości własnej macierzy inercji.
-        • **≈ 1.0** – masa rozłożona izotropowo (zwarte, okrągłe / kwadratowe kształty).  
+        • **≈ 1.0** – masa rozłożona izotropowo (zwarte, okrągłe / kwadratowe kształty).
         • **≫ 1.0** – masa skupiona wzdłuż jednej osi (wydłużone działki).
 
     inertia_major : float (m²)
@@ -430,11 +432,13 @@ class MomentInertiaFeatures:
     ------------------------------------------------------------------
     Jak rosną / maleją wartości
     ------------------------------------------------------------------
-    • **Wzrost inertia_ratio** → działka staje się bardziej wydłużona / anisotropowa.  
+    • **Wzrost inertia_ratio** → działka staje się bardziej wydłużona / anisotropowa.
     • **Spadek inertia_ratio → ≈ 1** → działka przechodzi w kształt bardziej zwarty.
     """
 
-    def __init__(self, geometry_column: str = "geometry", join: bool = True, sample_points: int = 500):
+    def __init__(
+        self, geometry_column: str = "geometry", join: bool = True, sample_points: int = 500
+    ):
         self.geometry_column = geometry_column
         self.join = join
         self.sample_points = sample_points
@@ -448,13 +452,17 @@ class MomentInertiaFeatures:
             return segments
         if isinstance(geom, Polygon):
             coords = list(geom.exterior.coords)
-            segments += [(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
-                         for i in range(len(coords)-1)]
+            segments += [
+                (coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1])
+                for i in range(len(coords) - 1)
+            ]
         elif isinstance(geom, MultiPolygon):
             for poly in geom.geoms:
                 coords = list(poly.exterior.coords)
-                segments += [(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
-                             for i in range(len(coords)-1)]
+                segments += [
+                    (coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1])
+                    for i in range(len(coords) - 1)
+                ]
         return segments
 
     # -------------------------------------------------------------
@@ -495,11 +503,14 @@ class MomentInertiaFeatures:
             inertia_ratio_list.append(major / minor if minor else np.nan)
             major_list.append(major)
             minor_list.append(minor)
-        feat = pd.DataFrame({
-            "inertia_ratio": inertia_ratio_list,
-            "inertia_major": major_list,
-            "inertia_minor": minor_list
-        }, index=gdf.index)
+        feat = pd.DataFrame(
+            {
+                "inertia_ratio": inertia_ratio_list,
+                "inertia_major": major_list,
+                "inertia_minor": minor_list,
+            },
+            index=gdf.index,
+        )
         return gdf.join(feat) if self.join else feat
 
 
@@ -516,18 +527,18 @@ class EdgeContextFeatures:
     ------------------------------------------------------------------
     convexity_deficit_len : float (m)
         Różnica długości: `P_convex_hull − P`.
-        • **≈ 0 m** → granica prawie wypukła.  
+        • **≈ 0 m** → granica prawie wypukła.
         • **≫ 0 m** → duża porcja obwodu „ukryta” w zatokach; rosną koszty
           uzbrojenia i długość dróg wewn.
 
     convexity_deficit_area : float (m²)
         Różnica powierzchni: `A_convex_hull − A`.
-        • **≈ 0 m²** → obrys niemal wypukły.  
+        • **≈ 0 m²** → obrys niemal wypukły.
         • **Wysoka wartość** → duże wcięcia / pierścieniowy kształt.
 
     convexity_deficit_ratio : float (0–1)
         `convexity_deficit_area / A_convex_hull` – normalizuje miarę do skali 0–1.
-        • **0** → brak wklęsłości.  
+        • **0** → brak wklęsłości.
         • **→ 1** → kształt silnie wklęsły / „pierścień”, znacząca część
           otoczki wypukłej jest pusta.
 
@@ -566,14 +577,18 @@ class EdgeContextFeatures:
         deficit_len = hull_perim - perimeter
         deficit_area = hull_area - area
         ratio = deficit_area / hull_area.replace(0, np.nan)
-        feat = pd.DataFrame({
-            "convexity_deficit_len": deficit_len,
-            "convexity_deficit_area": deficit_area,
-            "convexity_deficit_ratio": ratio
-        }, index=gdf.index)
+        feat = pd.DataFrame(
+            {
+                "convexity_deficit_len": deficit_len,
+                "convexity_deficit_area": deficit_area,
+                "convexity_deficit_ratio": ratio,
+            },
+            index=gdf.index,
+        )
         return gdf.join(feat) if self.join else feat
 
     __call__ = transform
+
 
 #######################################################################
 # 7. Ekstremalne minimalne otoczki -----------------------------------
@@ -588,18 +603,18 @@ class ExtremeEnvelopeFeatures:
     ------------------------------------------------------------------
     min_circle_radius : float (m)
         Promień **minimalnego okręgu otaczającego** (aproksymowany jako maksymalna
-        odległość wierzchołka od centroidu).  
-        • **Mniejszy promień** → działka kompaktowa.  
+        odległość wierzchołka od centroidu).
+        • **Mniejszy promień** → działka kompaktowa.
         • **Większy promień** → rozciągnięta / długa.
 
     area_to_circle_ratio : float (0–1)
-        `A / (π × r²)` – jak dużą część minimalnego okręgu wypełnia działka.  
-        • **≈ 1** → kształt bliski koła / kwadratu (wysoka efektywność pola).  
+        `A / (π × r²)` – jak dużą część minimalnego okręgu wypełnia działka.
+        • **≈ 1** → kształt bliski koła / kwadratu (wysoka efektywność pola).
         • **→ 0** → działka wąska, o małej powierzchni względem zasięgu.
 
     circle_area_excess : float (m²)
-        `(π × r²) − A` – „nadmiar” powierzchni okręgu względem działki.  
-        • **Niska** → działka zwarta.  
+        `(π × r²) − A` – „nadmiar” powierzchni okręgu względem działki.
+        • **Niska** → działka zwarta.
         • **Wysoka** → rozciągnięta, potencjalnie problematyczna przy zagospodar.
 
     ------------------------------------------------------------------
@@ -653,13 +668,16 @@ class ExtremeEnvelopeFeatures:
         """Oblicza promień minimalnego okręgu otaczającego i pochodne miary."""
         self._validate_crs(gdf)
         radii = gdf[self.geometry_column].apply(self._max_radius)
-        circle_area = np.pi * radii ** 2
+        circle_area = np.pi * radii**2
         area = gdf[self.geometry_column].area
         ratio = area / circle_area.replace(0, np.nan)
         excess = circle_area - area
-        feat = pd.DataFrame({
-            "min_circle_radius": radii,
-            "area_to_circle_ratio": ratio,
-            "circle_area_excess": excess
-        }, index=gdf.index)
+        feat = pd.DataFrame(
+            {
+                "min_circle_radius": radii,
+                "area_to_circle_ratio": ratio,
+                "circle_area_excess": excess,
+            },
+            index=gdf.index,
+        )
         return gdf.join(feat) if self.join else feat

@@ -1,5 +1,4 @@
 # conf/pipeline/features.yaml
-# @package _global_
 
 enabled: false
 crs_target: "EPSG:2180"

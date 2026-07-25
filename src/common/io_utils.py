@@ -3,10 +3,12 @@
 # === Config ===
 # === Imports ===
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional
+
 import sys
+from pathlib import Path
+
 from loguru import logger
+
 
 # === Types ===
 # === Constants ===
@@ -14,13 +16,14 @@ from loguru import logger
 def _ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
+
 # === Core ===
 def setup_logging(
     log_dir: Path,
     run_name: str,
     console_level: str = "INFO",
     file_level: str = "INFO",
-    fmt: Optional[str] = None,
+    fmt: str | None = None,
 ) -> None:
     """Configure Loguru sinks for console and file.
 
@@ -35,7 +38,10 @@ def setup_logging(
     logger.remove()  # remove default sink
 
     # Default readable format if none provided
-    fmt = fmt or "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <7}</level> | <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>"
+    fmt = (
+        fmt
+        or "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <7}</level> | <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>"
+    )
 
     # Console sink (to terminal)
     logger.add(

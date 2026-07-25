@@ -9,11 +9,11 @@ defaults:
 
 
 data:
-  # Nadpisujesz z CLI: data.base_dir=/mnt/c/...
-  base_dir: "D:\\EGIB_new\\pow_ostrodzki\\"
-  duckdb_path: "C:\\Users\\user\\OneDrive\\Documents\\VSC_workspace\\TerraMerge\\v2\\artifacts\\duckdb\\new\\egib_powiat_ostrodzki.duckdb"
-  transactions_path: "C:\\Users\\user\\OneDrive\\Documents\\VSC_workspace\\TerraMerge\\v2\\artifacts\\parquet\\transakcje.parquet"
-  mpzp_mapping_csv: "C:\\Users\\user\\OneDrive\\Documents\\VSC_workspace\\TerraMerge\\v2\\artifacts\\csv\\mpzp.csv"
+  # Wartości pochodzą z .env (patrz .env-example) — nadpisujesz też z CLI: data.base_dir=/mnt/c/...
+  base_dir: "${oc.env:TERRAMERGE_BASE_DIR}"
+  duckdb_path: "${oc.env:TERRAMERGE_DUCKDB_PATH,artifacts/duckdb/egib.duckdb}"
+  transactions_path: "${oc.env:TERRAMERGE_TRANSACTIONS_PATH,artifacts/parquet/transakcje.parquet}"
+  mpzp_mapping_csv: "${oc.env:TERRAMERGE_MPZP_MAPPING_CSV,artifacts/csv/mpzp.csv}"
 
 # Inicjalizacja DuckDB (opcja przyspieszająca operacje na Parquet)
 duckdb:

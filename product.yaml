@@ -1,0 +1,94 @@
+# ============================================================
+# product.yaml — S&I Product Card
+# ============================================================
+# This file is the single source of truth for this product.
+# This file should always be kept up to date.
+#
+# Run `just check` to validate this file.
+# ============================================================
+
+# --- Identity ---
+name: "TerraMerge"                                   # TODO: verify this — repo is "TerraMergev2"; confirm final product name
+description: "Geospatial data pipeline that merges Polish cadastral (EGIB) layers, engineers parcel-level features, and trains a LightGBM model to predict future parcel/land-use changes"  # TODO: verify this
+version: "0.1.0"
+author: "Darek"                                      # TODO: verify this — inferred from git log (dtandev@gmail.com)
+category: "geospatial-ml"                            # TODO: verify this — cadastral data processing + predictive modeling; no closer match in the example list (vegetation | hydrology | geology | classification)
+
+# --- Status ---
+status: "draft"
+created: "TODO: YYYY-MM-DD"                          # TODO: verify this — not derivable from git history (single squashed history)
+last_updated: "2026-07-25"
+
+# --- Inputs ---
+inputs:
+  - name: "EGIB base directory"
+    type: "Directory (File Geodatabase .gdb, organized as rok_YYYY/*.gdb)"
+    description: "Root directory containing yearly cadastral (EGIB) File Geodatabase exports, configured via data.base_dir in conf/config.yaml"
+    format: "ESRI File Geodatabase, polygon layers (Budynek, DzialkaEwidencyjna, KonturUzytkuGruntowego, etc.)"
+    required: true
+  - name: "Transactions data"
+    type: "Parquet"
+    description: "Real-estate transaction records joined to parcels via cfg.data.transactions_path"
+    format: "Parquet"  # TODO: verify this — exact schema not confirmed
+    required: false
+  - name: "MPZP mapping CSV"
+    type: "CSV"
+    description: "Mapping used when deriving local zoning plan (MPZP) features, via cfg.data.mpzp_mapping_csv"
+    format: "CSV"  # TODO: verify this
+    required: false
+  - name: "WFS zoning-plan service (optional)"
+    type: "WFS endpoint"
+    description: "Remote WFS service (conf/config.yaml wfs.url) used to fetch zoning-plan (MPZP) geometries, e.g. przeznaczenia/plany layers"
+    format: "WFS 1.1.0/2.0.0, EPSG:2180"
+    required: false
+
+# --- Outputs ---
+outputs:
+  - name: "Cleaned GeoParquet layers"
+    type: "GeoParquet"
+    description: "Cleaned, standardized cadastral layers written under data.base_dir/parquets/"
+    format: "GeoParquet, EPSG:2180"
+  - name: "DuckDB spatial database"
+    type: "DuckDB file"
+    description: "Consolidated cadastral + feature tables (schema 'egib', 'hex', 'labels', 'dataset') at cfg.data.duckdb_path"
+    format: "DuckDB with spatial extension"
+  - name: "Hexagon feature tables"
+    type: "DuckDB tables"
+    description: "H3-hexagon-aggregated parcel/UZG/transaction/MPZP features (hex.* schema)"
+    format: "DuckDB tables"
+  - name: "Trained model + predictions"
+    type: "joblib model + GeoParquet"
+    description: "Trained LightGBM model, feature metadata, and 2025 inference predictions written to model.model_output_dir (see artifacts/models/parcel_r8_full_1y/)"
+    format: "joblib (.joblib), JSON (feature_meta.json), GeoParquet (predictions_*.gpq)"
+
+# --- Parameters ---
+parameters:
+  # TODO: verify this — key configurable parameters, drawn from conf/*.yaml; see AUDIT.md for known config-path mismatches
+  - name: "data.base_dir"
+    type: string
+    default: null
+    description: "Root directory of the EGIB dataset for the current run — required, no safe default"
+  - name: "model.n_estimators"
+    type: int
+    default: 500
+    description: "LightGBM number of boosting rounds"
+  - name: "dataset.resolution"
+    type: string
+    default: "r8"
+    description: "H3 hexagon resolution used to build the training dataset"
+
+# --- Dependencies ---
+external_dependencies:
+  - name: "GDAL"
+    license: "MIT-style (GDAL license)"
+    notes: "System-level libgdal required; pip install of the 'GDAL' Python bindings must match the installed libgdal version — TODO: verify this on target machines"
+  - name: "Zoning-plan WFS service (integracja.e-mapa.net)"
+    license: "TODO: verify this — external service terms not confirmed"
+    notes: "Used by src/features/add_mpzp*.py; availability/rate limits not controlled by this project"
+
+# --- Known limitations ---
+# TODO: Fill this in — it's the most valuable part of the card.
+limitations:
+  - "TODO: verify this — see AUDIT.md for a list of currently known config/code defects (e.g. several pipeline steps cannot be enabled via config due to a Hydra `@package _global_` key-path mismatch; model validation-year config is silently ignored)."
+  - "TODO: verify this — model evaluation currently reuses the same validation split for early stopping, all reported metrics, and probability calibration (no held-out test set), so reported metrics are likely optimistic."
+  - "TODO: describe expected EGIB directory layout edge cases (missing years, missing layers, legacy 2020-era column names) and any known-bad inputs."

@@ -1,6 +1,3 @@
-# src/features/load_transactions_to_duckdb.py
-from __future__ import annotations
-
 """Load raw transactions Parquet → DuckDB table **egib."Transakcje"** (no join).
 
 Config keys used
@@ -19,14 +16,16 @@ Creates / replaces table **egib."Transakcje"** with:
 * `tx_year` (INT) extracted from `date_column` (for easy joins).
 """
 
+# src/features/load_transactions_to_duckdb.py
+from __future__ import annotations
+
 from pathlib import Path
+
 import duckdb
 from loguru import logger
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
-
-def _sel(cfg: DictConfig, key: str, default=None):
-    return OmegaConf.select(cfg, key, default=default)
+from src.common.config_utils import sel as _sel
 
 
 def run_load_transactions(cfg: DictConfig) -> None:
@@ -45,7 +44,9 @@ def run_load_transactions(cfg: DictConfig) -> None:
     - tx_year is derived with `EXTRACT(YEAR FROM try_cast(date_col AS DATE))`.
       If date parsing fails, tx_year will be NULL.
     """
-    if not _sel(cfg, "features.enabled", default=False) or not _sel(cfg, "features.add_transaction_prices.enabled", default=False):
+    if not _sel(cfg, "features.enabled", default=False) or not _sel(
+        cfg, "features.add_transaction_prices.enabled", default=False
+    ):
         logger.info("load_transactions disabled – skipping")
         return
 
@@ -60,7 +61,6 @@ def run_load_transactions(cfg: DictConfig) -> None:
         return
 
     sec: str = "features.add_transaction_prices"
-    id_col: str   = str(_sel(cfg, f"{sec}.id_column", "iddzialki"))
     date_col: str = str(_sel(cfg, f"{sec}.date_column", "Data"))
     write_mode: str = str(_sel(cfg, f"{sec}.write_mode", "replace")).lower()
 

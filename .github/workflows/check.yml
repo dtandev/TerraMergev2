@@ -1,0 +1,58 @@
+name: Baseline Check
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint & format check
+        run: uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+      - name: Validate baseline files exist
+        run: |
+          echo "Checking required baseline files..."
+          for f in product.yaml README.md CHANGELOG.md justfile .env-example .pre-commit-config.yaml; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Missing: $f"
+              exit 1
+            else
+              echo "✅ Found: $f"
+            fi
+          done
+          if [ ! -d "src" ] || [ ! -d "tests" ] || [ ! -d "examples" ]; then
+            echo "❌ Missing required directory (src/, tests/, or examples/)"
+            exit 1
+          fi
+          echo "✅ All baseline files present"
+
+      - name: Check version consistency
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Version in pyproject.toml: $VERSION"
+          if ! grep -qE "## \[?$VERSION\]?" CHANGELOG.md; then
+            echo "❌ Version $VERSION not found in CHANGELOG.md — run 'cz bump' or add a [$VERSION] entry before merging"
+            exit 1
+          fi
+          echo "✅ CHANGELOG.md has entry for $VERSION"
