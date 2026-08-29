@@ -8,6 +8,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.2.4 (2026-08-29)
+
+### Fix
+
+- **pipeline**: legacy id rename, coalesce dtypes, and dataset schema creation
+- **io**: persist full CRS in GeoParquet and read via DuckDB (read_geoparquet)
+
 ## v0.2.3 (2026-08-29)
 
 ### Refactor
