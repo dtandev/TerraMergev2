@@ -7,28 +7,41 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}   # login shell so the micromamba env stays active across steps
 
     steps:
       - uses: actions/checkout@v4
 
+      # GDAL 3.13 has no manylinux wheels and its build must match libgdal, so it cannot
+      # be pip-installed on a bare runner. conda-forge ships gdal 3.13 built for Python
+      # 3.12 — this sidesteps both the source build and the Python 3.14 that the official
+      # GDAL 3.13 containers force (this project caps Python at <3.13 via h3 3.7.7).
+      - name: Set up conda env with GDAL
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: ci
+          create-args: >-
+            python=3.12
+            gdal=3.13
+            pip
+
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: "latest"
+        run: pip install uv
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: uv sync
+      - name: Install project and dev dependencies
+        # GDAL is provided by conda-forge above, so the `local` extra (which carries the
+        # pinned pip GDAL for local dev) is intentionally NOT installed here.
+        run: uv pip install --python "$CONDA_PREFIX/bin/python" -e . --group dev
 
       - name: Lint & format check
-        run: uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/
+        run: |
+          ruff check src/ tests/
+          ruff format --check src/ tests/
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: pytest tests/ -v
 
       - name: Validate baseline files exist
         run: |
