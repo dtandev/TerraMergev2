@@ -3,13 +3,13 @@
 # `python rule_them_all.py data.base_dir=...`) — do not commit real local paths.
 
 # === CONFIG ROOT (minimal) ===
-defaults:
-  - prepare: default
-  - features: default
-  - pipeline: make_hexagons
-  - dataset: default
-  - model: default
-  - _self_
+# Per-stage config groups, composed by src/common/config_loader.py.
+includes:
+  prepare: prepare/default.yaml
+  features: features/default.yaml
+  pipeline: pipeline/make_hexagons.yaml
+  dataset: dataset/default.yaml
+  model: model/default.yaml
 
 
 data:
@@ -39,11 +39,6 @@ wfs:
       geom_field: "geometry"
       alias: "plany"
 
-
-hydra:
-  run:
-    dir: artifacts/reports/${now:%Y%m%d_%H%M%S}
-  output_subdir: null
 
 logging:
   console_level: INFO

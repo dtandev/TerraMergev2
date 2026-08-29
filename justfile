@@ -21,7 +21,7 @@ help:
     @echo "TerraMerge: merges Polish cadastral (EGIB) layers, builds H3-hexagon parcel"
     @echo "features, and trains a LightGBM model predicting future parcel/land-use changes."
     @echo ""
-    @echo "Pipeline stages (config-gated in conf/, all driven by src/main.py / Hydra):"
+    @echo "Pipeline stages (config-gated in conf/, all driven by src/main.py):"
     @echo "  prepare   - clean + extract raw .gdb layers to GeoParquet, merge + clean dataset"
     @echo "  features  - attach UZG / transaction-price / MPZP / geometric features to parcels"
     @echo "  hexagons  - aggregate parcels/transactions/MPZP/UZG onto an H3 hex grid"
