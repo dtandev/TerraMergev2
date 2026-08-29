@@ -15,6 +15,7 @@ import geopandas as gpd
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from osgeo import ogr
+from pyproj import CRS
 from tqdm import tqdm
 
 from src.common.duckdb_utils import write_geoparquet
@@ -108,15 +109,40 @@ def _to_uppercase_columns(
     return gdf, rename_map
 
 
+def _normalize_crs(
+    gdf: gpd.GeoDataFrame, *, naive_crs_fallback: str | None, target_crs: str | None
+) -> gpd.GeoDataFrame:
+    """Bring one layer to a single target CRS (default EPSG:2180 / PUWG 1992).
+
+    The source deliveries are in the CS2000 system (zones EPSG:2176-2179; szczycieński = 2178).
+    Formats carry it differently — SWDE has no CRS at all, some GML/SHP deliveries also come in
+    "naive" (no CRS tag), and GDB uses an ESRI-flavoured WKT (ESRI:102176) whose to_epsg() is
+    None. So: a naive layer is assumed to be in the region's CS2000 zone (naive_crs_fallback,
+    from prepare.swde_crs), and then every layer is reprojected to the target. Normalising here,
+    once, means every parquet and every downstream DuckDB table shares one CRS — no consumer has
+    to reproject, and no later step crashes on a naive geometry.
+    """
+    if gdf.crs is None and naive_crs_fallback:
+        gdf = gdf.set_crs(naive_crs_fallback, allow_override=True)
+    if target_crs and gdf.crs is not None:
+        target = CRS.from_user_input(target_crs)
+        if not gdf.crs.equals(target):
+            gdf = gdf.to_crs(target)
+    return gdf
+
+
 def _export_layer_to_parquet(
     gdf: gpd.GeoDataFrame,
     out_path: Path,
     *,
     year: int | None = None,
     uppercase_geometry: bool = True,
+    naive_crs_fallback: str | None = None,
+    target_crs: str | None = "EPSG:2180",
 ) -> None:
     """Zapis pojedynczej (już wczytanej) warstwy do Parquet + UPPERCASE kolumn + legacy rename."""
     try:
+        gdf = _normalize_crs(gdf, naive_crs_fallback=naive_crs_fallback, target_crs=target_crs)
         # Apply the legacy→modern column rename unconditionally, not just for year<2021: real GDB
         # deliveries keep the legacy names (G5IDD → idDzialki) even in recent years (confirmed on
         # rok_2022 szczycieński), so the year gate left DzialkaEwidencyjna without an `iddzialki`
@@ -395,6 +421,9 @@ def run_extraction_polygons(cfg: DictConfig) -> None:
     # per delivery region rather than hardcoded. Defaults to EPSG:2178 (CS2000 zone 7), correct for
     # the project's contracted scope (szczycieński / warmińsko-mazurskie).
     swde_crs = str(OmegaConf.select(cfg, "prepare.swde_crs", default="EPSG:2178"))
+    # Everything is normalised to this CRS at write time (see _normalize_crs). Default EPSG:2180
+    # (PUWG 1992) — the national grid all downstream steps assume.
+    target_crs = str(OmegaConf.select(cfg, "prepare.target_crs", default="EPSG:2180"))
 
     logger.info("START run_extraction_polygons | base_dir={} → out_dir={}", base_dir, out_dir)
 
@@ -445,6 +474,8 @@ def run_extraction_polygons(cfg: DictConfig) -> None:
                     out_file,
                     year=year if rename_legacy else None,
                     uppercase_geometry=uppercase_geometry,
+                    naive_crs_fallback=swde_crs,
+                    target_crs=target_crs,
                 )
 
     logger.success(

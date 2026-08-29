@@ -249,8 +249,13 @@ def run_clean_dataset(cfg: DictConfig) -> None:
                                 logger.debug("Dropped cols {} from {}", sorted(removed), f.name)
 
                         gdf["year"] = _cast_year(gdf.get("year"), fallback=yr)
-                        if crs_target and (
-                            gdf.crs is None or gdf.crs.to_string() != str(crs_target)
+                        # Extraction already normalises every layer to the target CRS, so this is
+                        # normally a no-op. Guard against naive geometry (crs is None): to_crs would
+                        # raise "Cannot transform naive geometries" — skip it rather than crash.
+                        if (
+                            crs_target
+                            and gdf.crs is not None
+                            and gdf.crs.to_string() != str(crs_target)
                         ):
                             gdf = gdf.to_crs(crs_target, inplace=False)
                         gdf = _parse_id(gdf, id_col=id_col, pat=pat)

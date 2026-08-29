@@ -25,6 +25,10 @@ rename_legacy_2020: true
 # O011 EGIB). Zmień, jeśli kiedyś uruchomisz ekstrakcję dla powiatu w innej strefie (5/6/8).
 swde_crs: "EPSG:2178"
 
+# Wszystkie warstwy są reprojektowane do tego układu przy zapisie (extract_polygons._normalize_crs),
+# żeby cały downstream był jednolicie 2180. EPSG:2180 = PUWG 1992 (krajowa siatka).
+target_crs: "EPSG:2180"
+
 
 # 3) Scalanie warstw według mapy
 merge:
