@@ -24,16 +24,19 @@ brew install uv just
 git clone https://github.com/dtandev/TerraMergev2.git
 cd TerraMergev2
 
-just setup      # uv sync + pre-commit hooks + copies .env-example -> .env
+just setup      # uv sync --extra local + pre-commit hooks + copies .env-example -> .env
 nano .env       # fill in your local EGIB dataset paths
 ```
 
-`just setup` runs `uv sync` (creates `.venv/`, installs all dependencies from `pyproject.toml`),
-installs git hooks, and copies `.env-example` to `.env`.
+`just setup` runs `uv sync --extra local` (creates `.venv/`, installs all dependencies from
+`pyproject.toml` — including GDAL), installs git hooks, and copies `.env-example` to `.env`.
 
-> **GDAL note:** `gdal` is a pip dependency here, but it needs a matching system `libgdal`
-> installed (e.g. `brew install gdal` on macOS) — if `uv sync` fails on it, install the system
-> library first and re-run.
+> **GDAL note:** `gdal` lives in the `local` optional-dependencies extra, not the default set,
+> because it has no manylinux wheels and its build must match your system `libgdal`
+> (e.g. `brew install gdal` on macOS). `uv sync --extra local` (what `just setup` runs) installs
+> it; a plain `uv sync` skips it. If it fails to build, install the system library first, make sure
+> the pin in `pyproject.toml` matches `gdal-config --version`, and re-run. CI does not use this
+> extra — it gets GDAL from conda-forge (see `.github/workflows/check.yml`).
 
 ---
 
