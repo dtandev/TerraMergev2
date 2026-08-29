@@ -22,15 +22,12 @@ from pathlib import Path
 import duckdb
 import geopandas as gpd
 import pandas as pd
-import pyarrow as pa
-import pyarrow.dataset as ds
 from loguru import logger
 from omegaconf import DictConfig
-from pyarrow import compute as pc
 from shapely import make_valid
 
 from src.common.config_utils import sel as _sel
-from src.common.duckdb_utils import write_geoparquet
+from src.common.duckdb_utils import read_geoparquet, write_geoparquet
 from src.features.features_makeover import FeaturesMakeover
 
 # -----------------------------------------------------------------------------#
@@ -44,9 +41,12 @@ def _coalesce(df: pd.DataFrame, groups: dict[str, Sequence[str]]) -> pd.DataFram
         present = [c for c in srcs if c in df.columns]
         if not present:
             continue
-        out = df[present[0]].copy()
+        # Cast through object: read_geoparquet (DuckDB) can type an all-null variant column as
+        # nullable Int64, and filling it from a string variant (e.g. OZU code 'N' = nieużytki)
+        # would otherwise raise "invalid literal for int()". Object holds either kind.
+        out = df[present[0]].astype(object)
         for c in present[1:]:
-            out = out.fillna(df[c])
+            out = out.fillna(df[c].astype(object))
         df[tgt] = out
         df.drop(columns=[c for c in present if c != tgt], inplace=True)
     return df
@@ -56,25 +56,11 @@ def _load_tree(root: Path, crs_out: str | None) -> gpd.GeoDataFrame:
     """Read all *input_data.parquet under root/year=*/."""
     parts: list[gpd.GeoDataFrame] = []
     for p in sorted(root.rglob("input_data.parquet")):
-        try:
-            gdf = gpd.read_parquet(p)
-        except pa.ArrowTypeError as err:
-            # typowy konflikt int64 vs dictionary w kolumnie 'year'
-            if "year" in str(err):
-                logger.warning("Re-casting <year> in {}", p)
-                # > odczytaj fragmenty pojedynczo i rzuć 'year' na int64
-                tables = []
-                for frag in ds.dataset(p, format="parquet").get_fragments():
-                    t = frag.to_table()
-                    if pa.types.is_dictionary(t.schema.field("year").type):
-                        t = t.set_column(
-                            t.schema.get_field_index("year"), "year", pc.cast(t["year"], pa.int64())
-                        )
-                    tables.append(t)
-                table = pa.concat_tables(tables, promote=True)
-                gdf = gpd.GeoDataFrame(table.to_pandas(), geometry="geometry")
-            else:
-                raise
+        # read_geoparquet reads via DuckDB, not pyarrow — required because osgeo (GDAL) is
+        # imported by the extraction step earlier in the same process, which breaks
+        # gpd.read_parquet (ArrowKeyError / segfault). DuckDB also decodes a dictionary-encoded
+        # 'year' column natively, so the old pyarrow re-cast workaround is no longer needed.
+        gdf = read_geoparquet(p)
 
         # year from path
         if "year" not in gdf.columns:
