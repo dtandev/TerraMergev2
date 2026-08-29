@@ -1,7 +1,7 @@
 repos:
   # --- Ruff: fast Python linter ---
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.10
+    rev: v0.15.18  # keep in sync with pyproject.toml's pinned `ruff==` dev dependency
     hooks:
       - id: ruff
         args: [--fix]

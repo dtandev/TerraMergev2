@@ -46,13 +46,3 @@ jobs:
             exit 1
           fi
           echo "✅ All baseline files present"
-
-      - name: Check version consistency
-        run: |
-          VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "Version in pyproject.toml: $VERSION"
-          if ! grep -qE "## \[?$VERSION\]?" CHANGELOG.md; then
-            echo "❌ Version $VERSION not found in CHANGELOG.md — run 'cz bump' or add a [$VERSION] entry before merging"
-            exit 1
-          fi
-          echo "✅ CHANGELOG.md has entry for $VERSION"

@@ -86,7 +86,11 @@ fix:
 lint:
     uv run pre-commit run --all-files
 
-# Bump version based on conventional commits, update CHANGELOG, tag, and push
+# EMERGENCY FALLBACK ONLY -- normal releases happen automatically on every merge to
+# main via .github/workflows/release.yml. Only run this by hand if that workflow is
+# broken or unavailable: running it on a feature branch, or in parallel with the
+# automated release, can produce duplicate/conflicting version bumps.
 release:
+    @echo "⚠️  Emergency fallback: releases normally happen automatically on merge to main."
     uv run cz bump
     git push && git push --tags
