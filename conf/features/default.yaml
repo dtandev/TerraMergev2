@@ -18,7 +18,7 @@ add_uzg:
   units: []            # [] → wszystkie obręby w parquets/
   overwrite: true
   write_duckdb: true   # jeśli chcesz od razu CREATE TABLE w DuckDB
-  
+
 add_mpzp:
   enabled: false
   source_layer: "DzialkaEwidencyjna"   # skąd bierzemy obręby (jak było)
@@ -55,5 +55,3 @@ add_geometric_features:
 
   add_to_duckdb:
     enabled: false
-
-

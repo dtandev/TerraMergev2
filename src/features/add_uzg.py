@@ -357,7 +357,7 @@ def run_add_uzg(cfg: DictConfig) -> None:
             OZK::VARCHAR      AS ozk,
             year::INTEGER     AS year,
             uzg_ozu_simple::VARCHAR AS uzg_ozu_simple,
-            CAST(uzg_bon_score AS DOUBLE) AS uzg_bon_score,             
+            CAST(uzg_bon_score AS DOUBLE) AS uzg_bon_score,
             geometry::GEOMETRY AS geometry      -- ← samo ::GEOMETRY wystarczy
         FROM read_parquet([{paths}], union_by_name = true);
     """)

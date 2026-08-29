@@ -10,7 +10,7 @@ make_hexagons:
   source_table: "kug"
   geom_column: "geometry"             # WKB (BLOB) w DB
   year_column: "year"
-  year: 2025                          # rok, dla którego generujemy heksy  
+  year: 2025                          # rok, dla którego generujemy heksy
   source_crs: "EPSG:2180"             # CRS geometrii w tabeli wejściowej
 
 
@@ -30,7 +30,7 @@ resolution: r9
 hex:
   table: "hex.Hexagons_${pipeline.resolution}"
   schema: hex
-  id_col: hex_id          
+  id_col: hex_id
   geom_col: geometry
   out_suffix: ${pipeline.resolution}
 
