@@ -3,7 +3,12 @@ from omegaconf import OmegaConf
 from shapely.geometry import Point
 
 from src.common.config_utils import sel
-from src.common.duckdb_utils import _detect_srid, connect_duckdb, save_geodf_as_ewkb_geometry
+from src.common.duckdb_utils import (
+    _detect_srid,
+    connect_duckdb,
+    save_geodf_as_ewkb_geometry,
+    write_geoparquet,
+)
 
 
 class TestSel:
@@ -71,5 +76,31 @@ class TestDuckdbUtils:
         con = connect_duckdb(db_path)
         try:
             assert _detect_srid(con, "main.test_table2", "geometry") is None
+        finally:
+            con.close()
+
+    def test_write_geoparquet_handles_zero_row_geodataframe(self, tmp_path):
+        # Regression guard: a `.apply()` over an empty GeoSeries keeps the geopandas "geometry"
+        # extension dtype (nothing to compute, so it never coerces to plain object/bytes) —
+        # confirmed against real EGiB deliveries where a restrictions/limitations layer ("RST",
+        # "OZN") legitimately has 0 features for a given unit/year. Without the `.astype(object)`
+        # fix, DuckDB's register() rejects that column: "Data type 'geometry' not recognized".
+        gdf = gpd.GeoDataFrame(
+            {"id": []},
+            geometry=gpd.GeoSeries([], dtype="geometry"),
+            crs="EPSG:2178",
+        )
+        out_path = tmp_path / "empty.parquet"
+
+        write_geoparquet(gdf, out_path)
+
+        assert out_path.exists()
+        con = connect_duckdb(out_path.parent / "unused.duckdb")
+        try:
+            con.execute("INSTALL spatial; LOAD spatial;")
+            row = con.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{out_path.as_posix()}')"
+            ).fetchone()
+            assert row[0] == 0
         finally:
             con.close()
