@@ -8,6 +8,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.2.3 (2026-08-29)
+
+### Refactor
+
+- **modeling**: write outputs via write_geoparquet
+
 ## v0.2.2 (2026-08-29)
 
 ### Fix
