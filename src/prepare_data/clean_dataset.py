@@ -12,13 +12,11 @@ from pathlib import Path
 import duckdb
 import geopandas as gpd
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from src.common.duckdb_utils import write_geoparquet
+from src.common.duckdb_utils import read_geoparquet, write_geoparquet
 
 # --------------------------------------------------------------------------------------
 # UTILS
@@ -76,21 +74,11 @@ def _deduplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _read_parquet_safe(path: Path) -> gpd.GeoDataFrame:
-    try:
-        return gpd.read_parquet(path)
-    except pa.ArrowTypeError as e:
-        if "year" in str(e) and "dictionary" in str(e):
-            logger.warning("Mixed 'year' types detected → coercing to int64 [{}]", path.name)
-            pf = pq.ParquetFile(path)
-            tables = []
-            for i in range(pf.num_row_groups):
-                rg = pf.read_row_group(i)
-                idx = rg.schema.get_field_index("year")
-                if idx != -1 and pa.types.is_dictionary(rg.schema.field(idx).type):
-                    rg = rg.set_column(idx, "year", rg["year"].cast(pa.int64()))
-                tables.append(rg)
-            return gpd.GeoDataFrame.from_arrow(pa.concat_tables(tables))
-        raise
+    # read_geoparquet reads via DuckDB, not pyarrow. Extraction imports osgeo (GDAL) earlier in
+    # the same process, which corrupts pyarrow's filesystem registry so gpd.read_parquet raises
+    # ArrowKeyError ('file' scheme already registered) or segfaults. DuckDB sidesteps pyarrow
+    # entirely and also decodes a dictionary-encoded 'year' column natively.
+    return read_geoparquet(path)
 
 
 # --------------------------------------------------------------------------------------

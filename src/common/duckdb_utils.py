@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import duckdb
 import geopandas as gpd
 import pandas as pd
 from loguru import logger
+from pyproj import CRS
 from shapely import set_srid, to_wkb
 
 
@@ -136,7 +138,12 @@ def write_geoparquet(gdf: gpd.GeoDataFrame, out_path: Path) -> None:
     `gdf.to_parquet(...)` anywhere that combination occurs.
     """
     geom_name = gdf.geometry.name
-    crs_epsg = gdf.crs.to_epsg() if gdf.crs is not None else None
+    # Persist the CRS as PROJJSON (GeoParquet V1 only accepts PROJJSON). Using the full CRS —
+    # not to_epsg() — is essential: real EGiB GDB/SHP deliveries carry an ESRI-flavoured WKT
+    # (e.g. "ETRS_1989_UWPP_2000_PAS_7", AUTHORITY ESRI:102176) whose to_epsg() is None, so the
+    # old EPSG-only path silently dropped the CRS and the parquet defaulted to CRS84 while the
+    # coordinates were actually EPSG:2178 — later reprojection then produced garbage.
+    crs_projjson = gdf.crs.to_json() if gdf.crs is not None else None
 
     df = pd.DataFrame(gdf)
     # `.apply()` over a zero-row GeoSeries returns an empty Series that KEEPS the geopandas
@@ -158,8 +165,9 @@ def write_geoparquet(gdf: gpd.GeoDataFrame, out_path: Path) -> None:
 
         con.register("__geoparquet_tmp__", df)
         geom_expr = "ST_GeomFromWKB(__wkb__)"
-        if crs_epsg:
-            geom_expr = f"ST_SetCRS({geom_expr}, 'EPSG:{crs_epsg}')"
+        if crs_projjson:
+            crs_sql = crs_projjson.replace("'", "''")  # escape single quotes for the SQL literal
+            geom_expr = f"ST_SetCRS({geom_expr}, '{crs_sql}')"
 
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -169,3 +177,60 @@ def write_geoparquet(gdf: gpd.GeoDataFrame, out_path: Path) -> None:
         """)
     finally:
         con.close()
+
+
+def read_geoparquet(path: Path, *, geom_col: str | None = None) -> gpd.GeoDataFrame:
+    """
+    Read a GeoParquet file into a GeoDataFrame via DuckDB — deliberately NOT via geopandas'
+    read_parquet (pyarrow). Once osgeo (GDAL) is imported anywhere in the process, pyarrow's
+    filesystem registry conflicts and gpd.read_parquet raises `ArrowKeyError: ... scheme 'file'
+    already registered` or segfaults (the read-side twin of the write conflict write_geoparquet
+    fixes). DuckDB reads parquet without touching pyarrow, so it is safe in the same process.
+
+    The primary geometry column and its CRS are recovered from the GeoParquet 'geo' metadata
+    (PROJJSON); geometry is stored as WKB and decoded back to shapely.
+    """
+    path = Path(path)
+    path_sql = path.as_posix().replace("'", "''")
+    con = duckdb.connect(":memory:")
+    try:
+        try:
+            con.execute("LOAD spatial;")
+        except (duckdb.CatalogException, duckdb.IOException):
+            con.execute("INSTALL spatial;")
+            con.execute("LOAD spatial;")
+
+        crs = None
+        primary = geom_col
+        try:
+            kv = con.execute(f"SELECT key, value FROM parquet_kv_metadata('{path_sql}')").fetchall()
+            geo = None
+            for k, v in kv:
+                key = k.decode() if isinstance(k, bytes) else k
+                if key == "geo":
+                    geo = v.decode() if isinstance(v, bytes) else v
+                    break
+            if geo:
+                meta = json.loads(geo)
+                primary = geom_col or meta.get("primary_column", primary)
+                crs_spec = meta.get("columns", {}).get(primary, {}).get("crs")
+                if isinstance(crs_spec, dict):
+                    crs = CRS.from_json_dict(crs_spec)
+                elif isinstance(crs_spec, str):
+                    crs = CRS.from_json(crs_spec)
+        except Exception:
+            pass  # no/unreadable geo metadata → fall back to a plain read below
+
+        df = con.execute(f"SELECT * FROM read_parquet('{path_sql}')").df()
+    finally:
+        con.close()
+
+    if primary is None or primary not in df.columns:
+        primary = next(
+            (c for c in ("geometry", "GEOMETRY", "geom") if c in df.columns), df.columns[-1]
+        )
+
+    geom = gpd.GeoSeries.from_wkb(
+        df[primary].map(lambda b: bytes(b) if b is not None else None), crs=crs
+    )
+    return gpd.GeoDataFrame(df.drop(columns=[primary]), geometry=geom, crs=crs)
