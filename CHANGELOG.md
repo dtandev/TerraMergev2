@@ -8,6 +8,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.2.1 (2026-08-29)
+
+### Refactor
+
+- **prepare_data**: clean_dataset writes via write_geoparquet
+- **prepare_data**: split polygon extraction into per-format readers
+
 ## v0.2.0 (2026-08-29)
 
 ### Feat
