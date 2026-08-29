@@ -14,7 +14,7 @@ add_transaction_prices:
 # 5) PRZYGOTOWANIE DANYCH O UZG
 
 add_uzg:
-  enabled: false
+  enabled: true
   units: []            # [] → wszystkie obręby w parquets/
   overwrite: true
   write_duckdb: true   # jeśli chcesz od razu CREATE TABLE w DuckDB
@@ -28,7 +28,7 @@ add_mpzp:
     enabled: true                      # wynik do egib."MPZP"
 
 add_geometric_features:
-  enabled: false
+  enabled: true
 
   # --- skąd/czym zapisujemy ---
   schema: ${duckdb.schema}                  # dziedziczy z sekcji duckdb
@@ -54,4 +54,6 @@ add_geometric_features:
     sample_points: 500
 
   add_to_duckdb:
-    enabled: false
+    # Must be true: add_parcels_data joins egib.GeometricFeatures onto the hex grid, so the
+    # features have to be persisted here or that join fails with "table does not exist".
+    enabled: true
