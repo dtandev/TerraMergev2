@@ -8,6 +8,31 @@ from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 
 
+def _load_extension(con: duckdb.DuckDBPyConnection, name: str, *, required: bool) -> bool:
+    """LOAD a DuckDB extension, INSTALLing it first if it isn't available yet.
+
+    Returns True if the extension is loaded. When ``required`` is False, a failure to
+    install (e.g. offline with no cached copy) is logged and swallowed rather than aborting
+    init — ``httpfs`` is only needed for remote (http/s3) reads, which local runs never do,
+    so a bare init must not hard-fail just because the network is unreachable. The names are
+    hardcoded literals, not user input (DuckDB has no parameter binding for INSTALL/LOAD).
+    """
+    try:
+        con.execute(f"LOAD {name};")
+        return True
+    except (duckdb.CatalogException, duckdb.IOException):
+        pass
+    try:
+        con.execute(f"INSTALL {name};")
+        con.execute(f"LOAD {name};")
+        return True
+    except Exception:
+        if required:
+            raise
+        logger.warning("Nie udało się zainstalować rozszerzenia '{}' — pomijam.", name)
+        return False
+
+
 def run_duckdb_init(cfg: DictConfig) -> None:
     """
     Tworzy/otwiera plik bazy DuckDB i przygotowuje podstawowy schemat.
@@ -22,8 +47,8 @@ def run_duckdb_init(cfg: DictConfig) -> None:
     logger.info("Inicjalizacja DuckDB: {}", db_path)
     con = duckdb.connect(str(db_path))
     try:
-        con.execute("INSTALL spatial; LOAD spatial;")
-        con.execute("INSTALL httpfs; LOAD httpfs;")
+        _load_extension(con, "spatial", required=True)
+        _load_extension(con, "httpfs", required=False)
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
 
         # --- BEZ 'auto' — ustaw tylko, jeśli podano w configu ---

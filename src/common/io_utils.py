@@ -24,7 +24,7 @@ def setup_logging(
     console_level: str = "INFO",
     file_level: str = "INFO",
     fmt: str | None = None,
-) -> None:
+) -> Path:
     """Configure Loguru sinks for console and file.
 
     Args:
@@ -33,6 +33,9 @@ def setup_logging(
         console_level: Log level for console sink (e.g., DEBUG/INFO).
         file_level: Log level for file sink.
         fmt: Optional Loguru format string. If None, a readable default is used.
+
+    Returns:
+        Path to the log file this run writes to (``log_dir/<run_name>.log``).
     """
     _ensure_dir(Path(log_dir))
     logger.remove()  # remove default sink
@@ -67,3 +70,5 @@ def setup_logging(
         level=file_level,
         format=fmt,
     )
+
+    return log_file

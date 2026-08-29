@@ -4,6 +4,7 @@ from pathlib import Path
 
 import duckdb
 import geopandas as gpd
+import pandas as pd
 from loguru import logger
 from shapely import set_srid, to_wkb
 
@@ -112,3 +113,59 @@ def save_geodf_as_ewkb_geometry(
         n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         logger.success("[SAVE] Zapisano {} wierszy do {}.", n, table)
         return int(n)
+
+
+def write_geoparquet(gdf: gpd.GeoDataFrame, out_path: Path) -> None:
+    """
+    Write a GeoDataFrame to a GeoParquet file via DuckDB's `COPY ... TO ... (FORMAT PARQUET)`,
+    deliberately not through geopandas/pandas' `to_parquet()` (which goes through pyarrow).
+
+    This works around a real, reproducible environment conflict: this project also imports GDAL
+    (`osgeo`) to read GDB/GML deliveries, and GDAL's build here bundles its own Arrow/Parquet
+    driver. Once `osgeo` has been imported anywhere in the process — regardless of import order —
+    pyarrow's own filesystem registry ends up in a broken state, and any later `gdf.to_parquet(...)`
+    either raises `pyarrow.lib.ArrowKeyError: Attempted to register factory for scheme 'file' but
+    that scheme is already registered` or segfaults outright (verified empirically against real
+    data; see audit.md). DuckDB's own parquet writer never touches pyarrow's filesystem registry,
+    so it isn't affected — verified to round-trip both data and CRS correctly (EPSG:2178 in, 2178
+    out) against a real 6000+ row GeoDataFrame read from a real `.gdb` file.
+
+    Every module in this codebase that reads spatial data via geopandas/GDAL and then calls
+    `.to_parquet(...)` is at risk of this in the same process (`src/main.py` imports GDAL-reading
+    modules unconditionally at startup) — this helper is the fix; use it instead of
+    `gdf.to_parquet(...)` anywhere that combination occurs.
+    """
+    geom_name = gdf.geometry.name
+    crs_epsg = gdf.crs.to_epsg() if gdf.crs is not None else None
+
+    df = pd.DataFrame(gdf)
+    # `.apply()` over a zero-row GeoSeries returns an empty Series that KEEPS the geopandas
+    # "geometry" extension dtype (nothing to compute, so no coercion to plain object/bytes ever
+    # happens) — confirmed against real deliveries where a layer (e.g. restrictions/"RST","OZN")
+    # legitimately has 0 features. DuckDB's register() then rejects it: "Data type 'geometry' not
+    # recognized". Force object dtype explicitly so empty layers export the same as non-empty ones.
+    wkb_col = gdf[geom_name].apply(lambda g: to_wkb(g) if g is not None else None)
+    df["__wkb__"] = wkb_col.astype(object)
+    df = df.drop(columns=[geom_name])
+
+    con = duckdb.connect(":memory:")
+    try:
+        try:
+            con.execute("LOAD spatial;")
+        except (duckdb.CatalogException, duckdb.IOException):
+            con.execute("INSTALL spatial;")
+            con.execute("LOAD spatial;")
+
+        con.register("__geoparquet_tmp__", df)
+        geom_expr = "ST_GeomFromWKB(__wkb__)"
+        if crs_epsg:
+            geom_expr = f"ST_SetCRS({geom_expr}, 'EPSG:{crs_epsg}')"
+
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        con.execute(f"""
+            COPY (SELECT * EXCLUDE (__wkb__), {geom_expr} AS "{geom_name}" FROM __geoparquet_tmp__)
+            TO '{out_path.as_posix()}' (FORMAT PARQUET)
+        """)
+    finally:
+        con.close()

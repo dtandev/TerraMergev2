@@ -30,6 +30,7 @@ from pyarrow import compute as pc
 from shapely import make_valid
 
 from src.common.config_utils import sel as _sel
+from src.common.duckdb_utils import write_geoparquet
 from src.features.features_makeover import FeaturesMakeover
 
 # -----------------------------------------------------------------------------#
@@ -168,35 +169,38 @@ _UZG_STRING = {
 }
 
 
-def _norm_kkl(df: gpd.GeoDataFrame, crs_out: str) -> gpd.GeoDataFrame:
+def _normalize(
+    df: gpd.GeoDataFrame,
+    rename_map: dict[str, str],
+    string_cols: set[str],
+    crs_out: str,
+    coalesce_groups: dict[str, Sequence[str]] | None = None,
+) -> gpd.GeoDataFrame:
+    """Shared KKL/UZG normalisation: geometry name, optional coalesce, rename to canonical
+    columns, backfill WERSJAID from ST_OBJ, string-cast the id/code columns, repair geometry,
+    reproject. KKL and UZG differ only in their maps and in whether coalesce runs first."""
     if "geometry" not in df.columns and "GEOMETRY" in df.columns:
         df = df.rename(columns={"GEOMETRY": "geometry"})
     df = df.set_geometry("geometry")
-    df = df.rename(columns={c: _KKL_RENAME[c] for c in df.columns if c in _KKL_RENAME})
+    if coalesce_groups:
+        df = _coalesce(df, coalesce_groups)
+    df = df.rename(columns={c: rename_map[c] for c in df.columns if c in rename_map})
     if "WERSJAID" not in df.columns and "ST_OBJ" in df.columns:
         df["WERSJAID"] = df["ST_OBJ"]
-    for c in df.columns.intersection(_KKL_STRING):
+    for c in df.columns.intersection(string_cols):
         df[c] = df[c].astype("string")
     df["geometry"] = make_valid(df.geometry)
     if crs_out and str(df.crs) != crs_out:
         df = df.to_crs(crs_out)
     return df
+
+
+def _norm_kkl(df: gpd.GeoDataFrame, crs_out: str) -> gpd.GeoDataFrame:
+    return _normalize(df, _KKL_RENAME, _KKL_STRING, crs_out)
 
 
 def _norm_uzg(df: gpd.GeoDataFrame, crs_out: str) -> gpd.GeoDataFrame:
-    if "geometry" not in df.columns and "GEOMETRY" in df.columns:
-        df = df.rename(columns={"GEOMETRY": "geometry"})
-    df = df.set_geometry("geometry")
-    df = _coalesce(df, _UZG_COALESCE)
-    df = df.rename(columns={c: _UZG_RENAME[c] for c in df.columns if c in _UZG_RENAME})
-    if "WERSJAID" not in df.columns and "ST_OBJ" in df.columns:
-        df["WERSJAID"] = df["ST_OBJ"]
-    for c in df.columns.intersection(_UZG_STRING):
-        df[c] = df[c].astype("string")
-    df["geometry"] = make_valid(df.geometry)
-    if crs_out and str(df.crs) != crs_out:
-        df = df.to_crs(crs_out)
-    return df
+    return _normalize(df, _UZG_RENAME, _UZG_STRING, crs_out, coalesce_groups=_UZG_COALESCE)
 
 
 # -----------------------------------------------------------------------------#
@@ -286,7 +290,7 @@ def _process_one_obreb(base_dir: Path, obreb: str, target_crs: str, overwrite: b
     if out_file.exists() and not overwrite:
         logger.warning("File exists and overwrite=False: {}", out_file)
     else:
-        gdf_kug.to_parquet(out_file, index=False)
+        write_geoparquet(gdf_kug, out_file)
         logger.success("Saved {}", out_file)
 
     return out_file
