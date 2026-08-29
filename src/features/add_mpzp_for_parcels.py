@@ -3,31 +3,33 @@ from __future__ import annotations
 
 # === Imports ===
 import os
+from collections.abc import Iterable
+
 import duckdb
 import geopandas as gpd
-import pandas as pd
 import numpy as np
-from typing import Iterable, Optional, Tuple
+import pandas as pd
+import shapely.wkb
 from loguru import logger
 from omegaconf import DictConfig
-import shapely.wkb
 from shapely.geometry.base import BaseGeometry
+
 from src.features.features_makeover import FeaturesMakeover
 
-
 # === Types ===
-BBox = Tuple[float, float, float, float]
+BBox = tuple[float, float, float, float]
 
 # === Constants ===
 PARCEL_GEOM_COL = "geometry"
 
 # === Helpers ===
 
+
 def _coerce_gdf_geometry(
     df: pd.DataFrame | gpd.GeoDataFrame,
     *,
     geom_col: str = PARCEL_GEOM_COL,
-    target_crs: Optional[str] = None,
+    target_crs: str | None = None,
 ) -> gpd.GeoDataFrame:
     """
     Ensure geometry column is a proper Shapely-backed GeoSeries.
@@ -39,9 +41,12 @@ def _coerce_gdf_geometry(
     s = df[geom_col]
 
     # Fast path: already shapely
-    if isinstance(s.dtype, gpd.array.GeometryDtype) or (len(s) > 0 and isinstance(s.iloc[0], BaseGeometry)):
+    if isinstance(s.dtype, gpd.array.GeometryDtype) or (
+        len(s) > 0 and isinstance(s.iloc[0], BaseGeometry)
+    ):
         gser = gpd.GeoSeries(s, crs=None)
     else:
+
         def _to_bytes(x):
             if x is None or (isinstance(x, float) and pd.isna(x)):
                 return None
@@ -75,19 +80,25 @@ def _coerce_gdf_geometry(
 
     return out
 
+
 def _sanitize_before_save(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
     Drop redundant columns
     Safe to call multiple times (errors='ignore').
     """
     to_drop = [
-        "shape_length", "Shape_Length",
-        "shape_area", "Shape_Area",
-        "obreb", "nr_dzialki", "jednostka",
+        "shape_length",
+        "Shape_Length",
+        "shape_area",
+        "Shape_Area",
+        "obreb",
+        "nr_dzialki",
+        "jednostka",
     ]
     out = gdf.drop(columns=to_drop, errors="ignore").copy()
 
     return out
+
 
 def _gdf_to_wkb_df(gdf: gpd.GeoDataFrame, *, geom_col: str = "geometry") -> pd.DataFrame:
     """
@@ -105,7 +116,7 @@ def _read_wfs_layer(
     typename: str,
     version: str,
     srsname: str,
-    bbox: Optional[BBox] = None,
+    bbox: BBox | None = None,
 ) -> gpd.GeoDataFrame:
     """
     Download WFS layer with bbox filter and fallback engines.
@@ -184,7 +195,9 @@ def run_add_mpzp(cfg: DictConfig) -> None:
                 '''
             ).fetch_df()
         except Exception as e:
-            logger.warning("ST_AsWKB failed ({}). Falling back to raw geometry column.", type(e).__name__)
+            logger.warning(
+                "ST_AsWKB failed ({}). Falling back to raw geometry column.", type(e).__name__
+            )
             parcels_df = con.execute(f'SELECT * FROM egib."{src_layer}"').fetch_df()
             # If no explicit WKB provided, try to reuse existing geometry as WKB-like blob
             if PARCEL_GEOM_COL in parcels_df.columns:
@@ -235,7 +248,11 @@ def run_add_mpzp(cfg: DictConfig) -> None:
 
     # Sanity required cols
     _require_columns(przezn, ["etykieta", PARCEL_GEOM_COL], layer_hint="ms:przeznaczenia")
-    _require_columns(plany, ["data_uchwaly", "oznaczenie", "geotiff", "legenda", PARCEL_GEOM_COL], layer_hint="ms:plany")
+    _require_columns(
+        plany,
+        ["data_uchwaly", "oznaczenie", "geotiff", "legenda", PARCEL_GEOM_COL],
+        layer_hint="ms:plany",
+    )
 
     # Clean geometries after reprojection
     for gdf in (parcels, przezn, plany):
@@ -263,11 +280,9 @@ def run_add_mpzp(cfg: DictConfig) -> None:
         how="left",
         predicate="intersects",
     ).drop(columns=["index_right"], errors="ignore")
-    
 
     # --- Derive MPZP labels ---
     if feat.derive_features:
-
         logger.info("Deriving MPZP labels")
         out = FeaturesMakeover._sanitize_mpzp_source(
             out,

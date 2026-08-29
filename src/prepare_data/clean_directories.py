@@ -1,12 +1,13 @@
 # clean_directories.py
 
 from __future__ import annotations
+
 import os
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Set
+
 from loguru import logger
-from omegaconf import DictConfig, OmegaConf
 
 
 def clean_directories(base_dir: Path, remove_dir_names: Iterable[str]) -> int:
@@ -31,7 +32,7 @@ def clean_directories(base_dir: Path, remove_dir_names: Iterable[str]) -> int:
         logger.warning("Base directory does not exist: {}", base_dir)
         return 0
 
-    targets: Set[str] = {n.lower() for n in remove_dir_names}
+    targets: set[str] = {n.lower() for n in remove_dir_names}
     logger.info("🧹 Cleaning under {} | targets={}", base_dir, ", ".join(sorted(targets)))
 
     deleted = 0

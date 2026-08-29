@@ -1,0 +1,76 @@
+[project]
+name = "terramerge"
+version = "0.1.0"
+description = "Geospatial pipeline merging Polish cadastral (EGIB) layers, engineering parcel features, and training a LightGBM model to predict future parcel/land-use changes"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"  # h3==3.7.7 (see h3<4.0 below) has no prebuilt wheels past 3.12
+authors = [
+    { name = "Darek" }
+]
+
+dependencies = [
+    # Detected via static scan of all .py files; cross-checked against the retired environment.yml.
+    "duckdb",
+    "geopandas",
+    "h3<4.0",                # h3 v4 has a breaking API change vs v3; code uses v3-style calls
+    "hydra-core",
+    "joblib",
+    "lightgbm",
+    "loguru",
+    "numpy",
+    "omegaconf",
+    "gdal==3.13.1",          # TODO: verify this — must match your system libgdal exactly (`gdal-config --version`);
+                             # pinned here to this machine's installed version (3.13.1). If `uv sync` fails with a
+                             # "Python bindings require at least libgdal X, but Y was found" error, update this pin
+                             # to match `gdal-config --version` on your machine.
+    "pandas<3",              # pandas 3.0.5 segfaults constructing GeoDataFrames in this environment
+                             # (pyarrow-backed string array crash) — pinned to the stable 2.x line
+    "psutil",
+    "pyarrow",
+    "python-dotenv",
+    "shapely",
+    "scikit-learn",
+    "tqdm",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff==0.15.18",  # pinned exactly, matching .pre-commit-config.yaml's rev — keep both in sync
+    "pre-commit>=3.7",
+    "detect-secrets>=1.5",
+    "commitizen>=3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+# CHANGELOG.md's version headings use the same `vX.Y.Z` form as tag_format
+# (e.g. `## v0.1.0 - date`), so `cz bump --changelog` finds the last release as
+# its anchor and inserts new entries on top. Keep the changelog headings in this
+# form — a bracketed `## [X.Y.Z]` heading would not match and cz would append the
+# new entry at the end of the file instead.
+tag_format = "v$version"
+update_changelog_on_bump = true
+version_files = ["product.yaml"]
+annotated_tag = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

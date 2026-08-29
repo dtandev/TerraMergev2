@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
-
 import json
-import duckdb
+import time
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
 import geopandas as gpd
 import joblib
 import lightgbm as lgb
@@ -14,13 +15,15 @@ from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from sklearn.inspection import permutation_importance
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import average_precision_score, roc_auc_score, brier_score_loss
-import time
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
+from src.common.config_utils import sel as _sel
+from src.common.duckdb_utils import connect_duckdb as _connect_spatial
 
 # =========================
 # Logging & DB
 # =========================
+
 
 def setup_logging(output_dir: Path, name: str = "training") -> Path:
     """
@@ -32,24 +35,17 @@ def setup_logging(output_dir: Path, name: str = "training") -> Path:
     # Remove previous sinks to prevent duplication in notebooks/REPL.
     logger.remove()
     logger.add(lambda msg: print(msg, end=""), level="INFO")
-    logger.add(log_path, level="INFO", encoding="utf-8", enqueue=True, rotation="10 MB", retention=5)
+    logger.add(
+        log_path, level="INFO", encoding="utf-8", enqueue=True, rotation="10 MB", retention=5
+    )
     logger.info("Logging to {}", log_path.resolve())
     return log_path
-
-
-def _connect_spatial(db_path: Path) -> duckdb.DuckDBPyConnection:
-    """
-    Open DuckDB connection and load spatial extension.
-    """
-    con = duckdb.connect(str(db_path))
-    con.execute("INSTALL spatial;")
-    con.execute("LOAD spatial;")
-    return con
 
 
 # =========================
 # IO helpers
 # =========================
+
 
 def _to_bytes_safe(val: object) -> bytes | None:
     """
@@ -91,11 +87,16 @@ def load_dataset_2180(
 
     geos = gpd.GeoSeries.from_wkb(df["__geom_wkb__"].map(_to_bytes_safe), crs="EPSG:2180")
     drop_cols = [c for c in ("__geom_wkb__", geom_col) if c in df.columns]
-    gdf = gpd.GeoDataFrame(df.drop(columns=drop_cols, errors="ignore"), geometry=geos, crs="EPSG:2180")
+    gdf = gpd.GeoDataFrame(
+        df.drop(columns=drop_cols, errors="ignore"), geometry=geos, crs="EPSG:2180"
+    )
     logger.success("Loaded {} rows with geometry (EPSG:2180)", len(gdf))
     return gdf
 
-def save_config_snapshot(output_dir: Path, cfg: DictConfig, filename: str = "config_snapshot.yaml") -> Path:
+
+def save_config_snapshot(
+    output_dir: Path, cfg: DictConfig, filename: str = "config_snapshot.yaml"
+) -> Path:
     """
     Save a resolved YAML snapshot of the cfg into output_dir/filename.
     Does NOT print the YAML to logs.
@@ -111,6 +112,7 @@ def save_config_snapshot(output_dir: Path, cfg: DictConfig, filename: str = "con
 # =========================
 # Feature prep (train & inference)
 # =========================
+
 
 def prepare_Xy_for_lgb(
     gdf: pd.DataFrame,
@@ -196,7 +198,7 @@ def load_feature_meta(path: Path) -> dict:
 def build_X_like(
     raw_df: pd.DataFrame,
     *,
-    label_col: Optional[str],
+    label_col: str | None,
     drop_always: Iterable[str],
     reference_columns: Iterable[str],
     categorical_cols: Iterable[str],
@@ -249,13 +251,14 @@ def build_X_like(
 # Train / Eval
 # =========================
 
+
 def train_lgbm_classifier(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     X_val: pd.DataFrame,
     y_val: pd.Series,
     *,
-    categorical_cols: Optional[Iterable[str]],
+    categorical_cols: Iterable[str] | None,
     model_out_path: Path,
     n_estimators: int = 2000,
     learning_rate: float = 0.02,
@@ -275,13 +278,20 @@ def train_lgbm_classifier(
     if (0 not in class_counts) or (1 not in class_counts) or (class_counts[1] == 0):
         raise ValueError("Both classes 0 and 1 must be present in y_train for scale_pos_weight.")
     pos_weight = float(class_counts[0] / class_counts[1])
-    logger.info("Class counts → 0: {} | 1: {} | scale_pos_weight={:.4f}",
-                int(class_counts[0]), int(class_counts[1]), pos_weight)
+    logger.info(
+        "Class counts → 0: {} | 1: {} | scale_pos_weight={:.4f}",
+        int(class_counts[0]),
+        int(class_counts[1]),
+        pos_weight,
+    )
 
     cat_cols = [c for c in (categorical_cols or []) if c in X_train.columns]
     not_category = [c for c in cat_cols if str(X_train[c].dtype) != "category"]
     if not_category:
-        logger.warning("Categoricals not dtype 'category': {}. Consider casting for stability.", not_category[:10])
+        logger.warning(
+            "Categoricals not dtype 'category': {}. Consider casting for stability.",
+            not_category[:10],
+        )
 
     model = lgb.LGBMClassifier(
         n_estimators=n_estimators,
@@ -296,11 +306,17 @@ def train_lgbm_classifier(
         lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=False),
         lgb.log_evaluation(period=log_eval_period),
     ]
-    logger.info("Training LightGBM… n_estimators={}, lr={}, max_depth={}, esr={}",
-                n_estimators, learning_rate, max_depth, early_stopping_rounds)
+    logger.info(
+        "Training LightGBM… n_estimators={}, lr={}, max_depth={}, esr={}",
+        n_estimators,
+        learning_rate,
+        max_depth,
+        early_stopping_rounds,
+    )
 
     model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         eval_set=[(X_val, y_val)],
         eval_metric="aucpr",
         categorical_feature=cat_cols,
@@ -348,8 +364,8 @@ def permutation_significance(
     scoring: str = "average_precision",
     n_repeats: int = 100,
     random_state: int = 42,
-    feature_subset: Optional[Iterable[str]] = None,
-    sample_rows: Optional[int] = None,
+    feature_subset: Iterable[str] | None = None,
+    sample_rows: int | None = None,
 ) -> pd.DataFrame:
     """
     Permutation importance with empirical one-sided p-values and FDR (BH).
@@ -373,7 +389,9 @@ def permutation_significance(
     if feature_subset is not None:
         cols = [c for c in feature_subset if c in X_val.columns]
         if not cols:
-            logger.warning("Feature subset empty after intersection with X_val columns. Falling back to all features.")
+            logger.warning(
+                "Feature subset empty after intersection with X_val columns. Falling back to all features."
+            )
         else:
             X_use = X_val[cols]
             logger.info("Permutation: using {} feature(s) (subset).", len(cols))
@@ -383,7 +401,9 @@ def permutation_significance(
         logger.info("Permutation: subsampled validation to {} rows.", len(X_use))
 
     pi = permutation_importance(
-        model, X_use, y_use,
+        model,
+        X_use,
+        y_use,
         scoring=scoring,
         n_repeats=n_repeats,
         random_state=random_state,
@@ -397,34 +417,46 @@ def permutation_significance(
     ci_low = np.percentile(imps_all, 2.5, axis=1)
     ci_high = np.percentile(imps_all, 97.5, axis=1)
 
-    out = pd.DataFrame({
-        "feature": names,
-        "importance_mean": pi.importances_mean,
-        "importance_std": pi.importances_std,
-        "ci_low": ci_low,
-        "ci_high": ci_high,
-        "p_value": p_emp,
-        "significant_FDR_5%": sig_mask,
-    }).sort_values("importance_mean", ascending=False).reset_index(drop=True)
+    out = (
+        pd.DataFrame(
+            {
+                "feature": names,
+                "importance_mean": pi.importances_mean,
+                "importance_std": pi.importances_std,
+                "ci_low": ci_low,
+                "ci_high": ci_high,
+                "p_value": p_emp,
+                "significant_FDR_5%": sig_mask,
+            }
+        )
+        .sort_values("importance_mean", ascending=False)
+        .reset_index(drop=True)
+    )
 
-    logger.info("Permutation significance done in {:.2f}s | features={} | repeats={} | rows={}",
-                time.time() - t0, len(names), n_repeats, len(X_use))
+    logger.info(
+        "Permutation significance done in {:.2f}s | features={} | repeats={} | rows={}",
+        time.time() - t0,
+        len(names),
+        n_repeats,
+        len(X_use),
+    )
     return out
+
 
 def evaluate_lgbm_on_validation(
     model: lgb.LGBMClassifier,
     X_val: pd.DataFrame,
     y_val: pd.Series,
     *,
-    feature_names: Optional[Iterable[str]] = None,
+    feature_names: Iterable[str] | None = None,
     topk: Iterable[float] = (0.05, 0.10, 0.20),
     n_perm_repeats: int = 5,
     random_state: int = 42,
     perm_significance: bool = True,
     perm_n_repeats: int = 100,
     perm_compute_brier: bool = True,
-    perm_max_features: Optional[int] = 50,   # NEW: limit cech do permutacji (top-N po gain)
-    perm_sample_rows: Optional[int] = None,  # NEW: subsample walidacji
+    perm_max_features: int | None = 50,  # NEW: limit cech do permutacji (top-N po gain)
+    perm_sample_rows: int | None = None,  # NEW: subsample walidacji
 ) -> dict:
     """
     Validation pack: raw metrics, calibration table, lift@k (raw & isotonic-calibrated),
@@ -455,15 +487,16 @@ def evaluate_lgbm_on_validation(
         return average_precision_score(y, p)
 
     perm = permutation_importance(
-        model, X_val, y_val,
+        model,
+        X_val,
+        y_val,
         n_repeats=n_perm_repeats,
         scoring=_ap_scorer,
         random_state=random_state,
     )
     names = list(feature_names) if feature_names is not None else list(X_val.columns)
     perm_imp = pd.Series(perm.importances_mean, index=names).sort_values(ascending=False)
-    logger.info("Permutation importance (AP, top-20):\n{}",
-                perm_imp.head(20).to_string())
+    logger.info("Permutation importance (AP, top-20):\n{}", perm_imp.head(20).to_string())
 
     # Isotonic calibration (fit on val → optimistic for test evaluation)
     iso = IsotonicRegression(out_of_bounds="clip")
@@ -472,8 +505,13 @@ def evaluate_lgbm_on_validation(
     ap_cal = float(average_precision_score(y_val, p_cal))
     brier_raw = float(brier_score_loss(y_val, p_raw))
     brier_cal = float(brier_score_loss(y_val, p_cal))
-    logger.info("Isotonic → AP raw={:.4f} | AP cal={:.4f} | Brier raw={:.4f} | Brier cal={:.4f}",
-                ap_raw, ap_cal, brier_raw, brier_cal)
+    logger.info(
+        "Isotonic → AP raw={:.4f} | AP cal={:.4f} | Brier raw={:.4f} | Brier cal={:.4f}",
+        ap_raw,
+        ap_cal,
+        brier_raw,
+        brier_cal,
+    )
 
     # Lift@k raw vs cal
     def _lift_at_k(y_true: pd.Series, y_score: np.ndarray, k: float) -> dict:
@@ -485,19 +523,26 @@ def evaluate_lgbm_on_validation(
         base_rate = (total / n) if n > 0 else 0.0
         capture_rate = (capture / total) if total > 0 else 0.0
         lift = ((capture / k_n) / base_rate) if base_rate > 0 else float("nan")
-        return {"k": float(k), "capture_events": capture, "events_total": total,
-                "capture_rate": float(capture_rate), "lift": float(lift)}
+        return {
+            "k": float(k),
+            "capture_events": capture,
+            "events_total": total,
+            "capture_rate": float(capture_rate),
+            "lift": float(lift),
+        }
 
     ks = list(topk)
     lift_raw = pd.DataFrame([_lift_at_k(y_val.reset_index(drop=True), p_raw, k) for k in ks])
     lift_cal = pd.DataFrame([_lift_at_k(y_val.reset_index(drop=True), p_cal, k) for k in ks])
-    comp = pd.DataFrame({
-        "k": ks,
-        "capture_rate_raw": lift_raw["capture_rate"].values,
-        "capture_rate_cal": lift_cal["capture_rate"].values,
-        "lift_raw": lift_raw["lift"].values,
-        "lift_cal": lift_cal["lift"].values,
-    })
+    comp = pd.DataFrame(
+        {
+            "k": ks,
+            "capture_rate_raw": lift_raw["capture_rate"].values,
+            "capture_rate_cal": lift_cal["capture_rate"].values,
+            "lift_raw": lift_raw["lift"].values,
+            "lift_cal": lift_cal["lift"].values,
+        }
+    )
     comp["delta_capture_rate"] = comp["capture_rate_cal"] - comp["capture_rate_raw"]
     comp["delta_lift"] = comp["lift_cal"] - comp["lift_raw"]
     logger.info("Lift comparison:\n{}", comp.to_string(index=False))
@@ -508,34 +553,50 @@ def evaluate_lgbm_on_validation(
         # wybór top-N po GAIN (szybkie i darmowe)
         gains = pd.Series(
             model.booster_.feature_importance(importance_type="gain"),
-            index=list(feature_names) if feature_names is not None else list(X_val.columns)
+            index=list(feature_names) if feature_names is not None else list(X_val.columns),
         ).sort_values(ascending=False)
 
         feat_subset = None
         if perm_max_features is not None and perm_max_features > 0:
             feat_subset = gains.head(perm_max_features).index.tolist()
-            logger.info("Permutation significance: limiting to top-{} features by GAIN.", len(feat_subset))
+            logger.info(
+                "Permutation significance: limiting to top-{} features by GAIN.", len(feat_subset)
+            )
 
-        logger.info("Running permutation significance (AP) | repeats={} | max_features={} | sample_rows={}",
-                    perm_n_repeats, (len(feat_subset) if feat_subset else "all"), (perm_sample_rows or "all"))
+        logger.info(
+            "Running permutation significance (AP) | repeats={} | max_features={} | sample_rows={}",
+            perm_n_repeats,
+            (len(feat_subset) if feat_subset else "all"),
+            (perm_sample_rows or "all"),
+        )
 
         sig_df_ap = permutation_significance(
-            model, X_val, y_val,
+            model,
+            X_val,
+            y_val,
             scoring="average_precision",
             n_repeats=perm_n_repeats,
             random_state=random_state,
             feature_subset=feat_subset,
             sample_rows=perm_sample_rows,
         )
-        logger.info("Significant @ FDR 5% (AP): {}",
-                    sig_df_ap.loc[sig_df_ap["significant_FDR_5%"], "feature"].tolist())
+        logger.info(
+            "Significant @ FDR 5% (AP): {}",
+            sig_df_ap.loc[sig_df_ap["significant_FDR_5%"], "feature"].tolist(),
+        )
 
         sig_df_brier = None
         if perm_compute_brier:
-            logger.info("Running permutation significance (Brier) | repeats={} | max_features={} | sample_rows={}",
-                        perm_n_repeats, (len(feat_subset) if feat_subset else "all"), (perm_sample_rows or "all"))
+            logger.info(
+                "Running permutation significance (Brier) | repeats={} | max_features={} | sample_rows={}",
+                perm_n_repeats,
+                (len(feat_subset) if feat_subset else "all"),
+                (perm_sample_rows or "all"),
+            )
             sig_df_brier = permutation_significance(
-                model, X_val, y_val,
+                model,
+                X_val,
+                y_val,
                 scoring="neg_brier_score",
                 n_repeats=perm_n_repeats,
                 random_state=random_state,
@@ -549,9 +610,12 @@ def evaluate_lgbm_on_validation(
         "calibration": calib,
         "perm_importance": perm_imp,
         "isotonic": {
-            "ap_raw": ap_raw, "ap_cal": ap_cal,
-            "brier_raw": brier_raw, "brier_cal": brier_cal,
-            "p_raw": p_raw, "p_cal": p_cal,
+            "ap_raw": ap_raw,
+            "ap_cal": ap_cal,
+            "brier_raw": brier_raw,
+            "brier_cal": brier_cal,
+            "p_raw": p_raw,
+            "p_cal": p_cal,
             "model": iso,
         },
         "lift": {"raw": lift_raw, "cal": lift_cal, "comparison": comp},
@@ -563,6 +627,7 @@ def evaluate_lgbm_on_validation(
 # Orchestration (train + inference 2025)
 # =========================
 
+
 def temporal_holdout_split(
     X: pd.DataFrame,
     y: pd.Series,
@@ -570,7 +635,7 @@ def temporal_holdout_split(
     year_col: str = "year",
     train_max_year: int = 2022,
     valid_years: tuple[int, ...] = (2023, 2024),
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """
     Split by explicit years: train on <= train_max_year, validate on valid_years.
     """
@@ -597,11 +662,12 @@ def run_training(cfg: DictConfig) -> None:
     drop_cols = tuple(_sel(cfg, "model.drop_columns", ["hex_id", "geometry"]))
     prefer_cats = tuple(_sel(cfg, "model.prefer_cats", ("jednostka",)))
     cat_card_max = int(_sel(cfg, "model.cat_cardinality_max", 30))
-    valid_years = tuple(_sel(cfg, "model.test_years", [2023, 2024]))
+    valid_years = tuple(_sel(cfg, "model.valid_years", [2023, 2024]))
     inference_years = tuple(_sel(cfg, "model.inference_years", [2025]))
+    train_max_year = int(_sel(cfg, "model.train_max_year", 2022))
 
     model_dir = Path(_sel(cfg, "model.model_output_dir", "artifacts/models/0/")).expanduser()
-    log_path = setup_logging(model_dir, name="training")
+    setup_logging(model_dir, name="training")
     save_config_snapshot(model_dir, cfg)  # zapis do config_snapshot.yaml
 
     # 1) Load data
@@ -627,7 +693,7 @@ def run_training(cfg: DictConfig) -> None:
 
     # 4) Temporal split
     X_train, X_val, y_train, y_val = temporal_holdout_split(
-        X_all, y_all, train_max_year=2022, valid_years=valid_years
+        X_all, y_all, train_max_year=train_max_year, valid_years=valid_years
     )
     # feature meta includes year dropped from matrices; keep column layout from X_train
     feature_meta_path = save_feature_meta(model_dir, list(X_train.columns), list(cat_cols))
@@ -635,8 +701,12 @@ def run_training(cfg: DictConfig) -> None:
     # 5) Train
     model_path = model_dir / "lgbm_model.joblib"
     model, imp_gain_top30 = train_lgbm_classifier(
-        X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val,
-        categorical_cols=cat_cols, model_out_path=model_path,
+        X_train=X_train,
+        y_train=y_train,
+        X_val=X_val,
+        y_val=y_val,
+        categorical_cols=cat_cols,
+        model_out_path=model_path,
         n_estimators=int(_sel(cfg, "model.n_estimators", 500)),
         learning_rate=float(_sel(cfg, "model.learning_rate", 0.05)),
         max_depth=int(_sel(cfg, "model.max_depth", -1)),
@@ -647,7 +717,9 @@ def run_training(cfg: DictConfig) -> None:
 
     # 6) Evaluate (logs only; artifacts możesz dodać później jeśli chcesz)
     eval_res = evaluate_lgbm_on_validation(
-        model, X_val, y_val,
+        model,
+        X_val,
+        y_val,
         feature_names=X_val.columns,
         topk=(0.05, 0.10, 0.20),
         n_perm_repeats=int(_sel(cfg, "model.n_perm_repeats", 5)),
@@ -657,7 +729,9 @@ def run_training(cfg: DictConfig) -> None:
         perm_compute_brier=bool(_sel(cfg, "model.perm_compute_brier", True)),
     )
     m = eval_res["metrics"]
-    logger.success("Eval summary → AP={:.4f} | ROC-AUC={:.4f} | Brier={:.4f}", m["ap"], m["roc"], m["brier"])
+    logger.success(
+        "Eval summary → AP={:.4f} | ROC-AUC={:.4f} | Brier={:.4f}", m["ap"], m["roc"], m["brier"]
+    )
 
     # 7) Inference for 2025 → GeoParquet
     if not infer_df.empty:
@@ -703,19 +777,3 @@ def run_training(cfg: DictConfig) -> None:
         logger.warning("Inference skipped (no rows for {}).", inference_years)
 
     logger.success("All done. Artifacts in: {}", model_dir.resolve())
-
-
-# =========================
-# Small utility
-# =========================
-
-def _sel(cfg: DictConfig, path: str, default=None):
-    """
-    Safe nested selection from DictConfig using 'dot' path.
-    """
-    cur = cfg
-    for part in path.split("."):
-        if cur is None or part not in cur:
-            return default
-        cur = cur[part]
-    return cur

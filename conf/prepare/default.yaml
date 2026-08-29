@@ -1,5 +1,4 @@
 # conf/pipeline/prepare.yaml
-# @package _global_
 
 # Master switch na etap “prepare” (sprzątanie + ekstrakcja)
 enabled: false

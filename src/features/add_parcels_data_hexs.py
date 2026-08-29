@@ -1,6 +1,8 @@
 from __future__ import annotations
+
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence, Dict, List, Tuple
+
 import duckdb
 import geopandas as gpd
 import numpy as np
@@ -8,41 +10,20 @@ import pandas as pd
 from loguru import logger
 from omegaconf import DictConfig
 
-# =========================
-# Small config helper
-# =========================
-
-def _sel(cfg: DictConfig, path: str, default=None):
-    """
-    Safe nested selection from DictConfig using 'dot' path.
-    """
-    cur = cfg
-    for part in path.split("."):
-        if cur is None or part not in cur:
-            return default
-        cur = cur[part]
-    return cur
-
+from src.common.config_utils import sel as _sel
+from src.common.duckdb_utils import connect_duckdb as _connect_spatial
 
 # =========================
 # DuckDB I/O
 # =========================
 
-def _connect_spatial(db_path: Path) -> duckdb.DuckDBPyConnection:
-    """
-    Open DuckDB connection with spatial extension.
-    """
-    con = duckdb.connect(str(db_path))
-    con.execute("INSTALL spatial;")
-    con.execute("LOAD spatial;")
-    return con
 
-
-def _duckdb_columns(con: duckdb.DuckDBPyConnection, table: str) -> List[str]:
+def _duckdb_columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:
     """
     Return column names for a DuckDB table/view.
     """
     return [r[1] for r in con.execute(f"PRAGMA table_info('{table}')").fetchall()]
+
 
 def _to_bytes_safe(val: object) -> bytes | None:
     """
@@ -61,13 +42,14 @@ def _to_bytes_safe(val: object) -> bytes | None:
             return None
     return None
 
+
 def load_parcels_joined_2180(
     db_path: Path,
     *,
     parcels_table: str = "egib.DzialkaEwidencyjna",
     gf_table: str = "egib.GeometricFeatures",
     geom_col: str = "geometry",
-    join_keys: Tuple[str, str] = ("iddzialki", "year"),
+    join_keys: tuple[str, str] = ("iddzialki", "year"),
 ) -> gpd.GeoDataFrame:
     """
     Load parcels LEFT JOIN GeometricFeatures on (iddzialki, year).
@@ -102,7 +84,9 @@ def load_parcels_joined_2180(
     if geom_col in df.columns:
         drop_cols.append(geom_col)
 
-    gdf = gpd.GeoDataFrame(df.drop(columns=drop_cols, errors="ignore"), geometry=geos, crs="EPSG:2180")
+    gdf = gpd.GeoDataFrame(
+        df.drop(columns=drop_cols, errors="ignore"), geometry=geos, crs="EPSG:2180"
+    )
     return gdf
 
 
@@ -134,7 +118,9 @@ def load_parcels_simple_2180(
     if geom_col in df.columns:
         drop_cols.append(geom_col)
 
-    gdf = gpd.GeoDataFrame(df.drop(columns=drop_cols, errors="ignore"), geometry=geos, crs="EPSG:2180")
+    gdf = gpd.GeoDataFrame(
+        df.drop(columns=drop_cols, errors="ignore"), geometry=geos, crs="EPSG:2180"
+    )
     logger.debug("Loaded {} parcel rows (no join)", len(gdf))
     return gdf
 
@@ -160,7 +146,9 @@ def load_hex_2180(
 
     wkb = df["geom_wkb_2180"].map(_to_bytes_safe)
     geos = gpd.GeoSeries.from_wkb(wkb, crs="EPSG:2180")
-    gdf = gpd.GeoDataFrame(df.drop(columns=["geom_wkb_2180"], errors="ignore"), geometry=geos, crs="EPSG:2180")
+    gdf = gpd.GeoDataFrame(
+        df.drop(columns=["geom_wkb_2180"], errors="ignore"), geometry=geos, crs="EPSG:2180"
+    )
     return gdf
 
 
@@ -168,13 +156,14 @@ def load_hex_2180(
 # Intersection + aggregation
 # =========================
 
+
 def intersect_aggregate_hex_parcels(
     gdf_parcels: gpd.GeoDataFrame,
     gdf_hex: gpd.GeoDataFrame,
     *,
     year_col: str = "year",
     hex_id_col: str = "hex_id",
-    include_features: Optional[Sequence[str]] = None,
+    include_features: Sequence[str] | None = None,
     categorical_modes: Sequence[str] = ("jednostka",),
     parcel_id_col: str = "iddzialki",
 ) -> gpd.GeoDataFrame:
@@ -213,7 +202,8 @@ def intersect_aggregate_hex_parcels(
     # === wybór cech numerycznych ===
     if include_features is None:
         include_features = [
-            c for c in gdf_parcels.columns
+            c
+            for c in gdf_parcels.columns
             if c not in {gdf_parcels.geometry.name, year_col, parcel_id_col}
             and np.issubdtype(gdf_parcels[c].dtype, np.number)
         ]
@@ -227,15 +217,19 @@ def intersect_aggregate_hex_parcels(
     coverage_area = inter["part_area"].groupby(keys, observed=True).sum().rename("coverage_area")
 
     # === średnie ważone (wektorowo) ===
-    mean_frames: List[pd.Series] = []
+    mean_frames: list[pd.Series] = []
     for col in include_features:
         mask = inter[col].notna()
-        sum_wx = (inter.loc[mask, col] * inter.loc[mask, "w_hex"]).groupby(
-            [inter.loc[mask, hex_id_col], inter.loc[mask, year_col]], observed=True
-        ).sum()
-        sum_w = inter.loc[mask, "w_hex"].groupby(
-            [inter.loc[mask, hex_id_col], inter.loc[mask, year_col]], observed=True
-        ).sum()
+        sum_wx = (
+            (inter.loc[mask, col] * inter.loc[mask, "w_hex"])
+            .groupby([inter.loc[mask, hex_id_col], inter.loc[mask, year_col]], observed=True)
+            .sum()
+        )
+        sum_w = (
+            inter.loc[mask, "w_hex"]
+            .groupby([inter.loc[mask, hex_id_col], inter.loc[mask, year_col]], observed=True)
+            .sum()
+        )
         mean_col = (sum_wx / sum_w).rename(f"{col}_mean")
         mean_frames.append(mean_col)
 
@@ -252,8 +246,9 @@ def intersect_aggregate_hex_parcels(
         idx = area_per_cat.groupby(level=[0, 1]).idxmax()
         dominant = pd.Series(
             data=[t[2] for t in idx.to_list()],
-            index=pd.MultiIndex.from_tuples([(t[0], t[1]) for t in idx.to_list()],
-                                            names=[hex_id_col, year_col]),
+            index=pd.MultiIndex.from_tuples(
+                [(t[0], t[1]) for t in idx.to_list()], names=[hex_id_col, year_col]
+            ),
             name="jednostka",
         )
     else:
@@ -276,7 +271,16 @@ def intersect_aggregate_hex_parcels(
     )
 
     feature_means = [f"{c}_mean" for c in include_features]
-    cols = [hex_id_col, year_col, *feature_means, "n_parcel", "jednostka", "hex_area", "coverage_area", out_gdf.geometry.name]
+    cols = [
+        hex_id_col,
+        year_col,
+        *feature_means,
+        "n_parcel",
+        "jednostka",
+        "hex_area",
+        "coverage_area",
+        out_gdf.geometry.name,
+    ]
     cols = [c for c in cols if c in out_gdf.columns]
     return out_gdf[cols]
 
@@ -300,11 +304,17 @@ def _postprocess_coverage_and_rounding(
     if min_cover_fraction > 0.0:
         before = len(gdf_out)
         gdf_out = gdf_out.loc[gdf_out["coverage_frac"] >= min_cover_fraction].copy()
-        logger.info("Coverage filter >= {:.2%}: kept {}/{} rows", min_cover_fraction, len(gdf_out), before)
+        logger.info(
+            "Coverage filter >= {:.2%}: kept {}/{} rows", min_cover_fraction, len(gdf_out), before
+        )
 
     # Zaokrąglaj tylko liczby i tylko sensowne kolumny
     numeric_cols = gdf_out.select_dtypes(include=["number"]).columns.tolist()
-    to_round = [c for c in numeric_cols if c.endswith("_mean") or c in ("hex_area", "coverage_area", "coverage_frac")]
+    to_round = [
+        c
+        for c in numeric_cols
+        if c.endswith("_mean") or c in ("hex_area", "coverage_area", "coverage_frac")
+    ]
     if to_round:
         gdf_out[to_round] = gdf_out[to_round].round(decimals)
 
@@ -317,7 +327,8 @@ def write_geodf_to_duckdb(
     *,
     table: str,
     geom_col: str = "geometry",
-    casts: Optional[Dict[str, str]] = None,
+    srid: int = 2180,
+    casts: dict[str, str] | None = None,
 ) -> int:
     """
     Write a GeoDataFrame to DuckDB, overwriting the target table.
@@ -342,8 +353,13 @@ def write_geodf_to_duckdb(
     int
         Number of rows written.
     """
+    from shapely import set_srid
+    from shapely import to_wkb as _to_wkb
+
     df = gdf.copy()
-    df["__wkb__"] = df.geometry.to_wkb()
+    df["__wkb__"] = df.geometry.apply(
+        lambda g: _to_wkb(set_srid(g, srid), include_srid=True) if g is not None else None
+    )
     non_geo_cols = [c for c in df.columns if c != gdf.geometry.name]
     con.register("df_in", df[non_geo_cols])
 
@@ -356,18 +372,22 @@ def write_geodf_to_duckdb(
     cols_sql_str = ", ".join(cols_sql)
     sep = ", " if cols_sql_str else ""
     con.execute(f"DROP TABLE IF EXISTS {table}")
+    # ST_SetCRS makes the SRID embedded via to_wkb(include_srid=True) actually queryable through
+    # ST_CRS() afterwards — ST_GeomFromWKB alone does not surface it in this DuckDB spatial version.
     con.execute(f"""
         CREATE TABLE {table} AS
         SELECT
             {cols_sql_str}{sep}
-            ST_GeomFromWKB(__wkb__) AS {geom_col}
+            ST_SetCRS(ST_GeomFromWKB(__wkb__), 'EPSG:{int(srid)}') AS {geom_col}
         FROM df_in
     """)
     return len(df)
 
+
 # =========================
 # Pipeline entry
 # =========================
+
 
 def run_add_parcels_data(cfg: DictConfig) -> None:
     """
@@ -382,28 +402,28 @@ def run_add_parcels_data(cfg: DictConfig) -> None:
 
     if not db_path:
         raise ValueError("Missing cfg.data.duckdb_path")
-    
-    parcels_table : str = _sel(cfg, "pipeline.egib.table", "")
+
+    parcels_table: str = _sel(cfg, "pipeline.egib.table", "")
     geom_col: str = _sel(cfg, "pipeline.egib.geom_col", "geometry")
 
-    join_with: Optional[str] = _sel(cfg, "pipeline.add_parcels_data.join_with", None)
-    join_keys: Tuple[str, str] = _sel(cfg, "pipeline.add_parcels_data.join_columns", ("iddzialki", "year"))
+    join_with: str | None = _sel(cfg, "pipeline.add_parcels_data.join_with", None)
+    join_keys: tuple[str, str] = _sel(
+        cfg, "pipeline.add_parcels_data.join_columns", ("iddzialki", "year")
+    )
 
     if join_with:
         logger.info(f"Loading parcels joined with {join_with} from DuckDB → {db_path}")
         gdf_parcels = load_parcels_joined_2180(
             db_path,
-            parcels_table=parcels_table,              
+            parcels_table=parcels_table,
             gf_table=join_with,
             geom_col=geom_col,
-            join_keys=tuple(join_keys)
+            join_keys=tuple(join_keys),
         )
     else:
         logger.info(f"Loading parcels (no join) from DuckDB → {db_path}")
         gdf_parcels = load_parcels_simple_2180(
-            db_path,
-            parcels_table=parcels_table,
-            geom_col=geom_col
+            db_path, parcels_table=parcels_table, geom_col=geom_col
         )
 
     logger.info(f"Loading hexagons from DuckDB → {db_path}")
@@ -413,11 +433,7 @@ def run_add_parcels_data(cfg: DictConfig) -> None:
 
     logger.info(f"Using hex table: {hex_table}")
 
-    gdf_hex = load_hex_2180(
-        db_path,
-        hex_table=hex_table,
-        geom_col=(geom_col)
-    )
+    gdf_hex = load_hex_2180(db_path, hex_table=hex_table, geom_col=(geom_col))
 
     logger.info("Intersecting and aggregating parcels into hexagons...")
 
@@ -453,7 +469,7 @@ def run_add_parcels_data(cfg: DictConfig) -> None:
 
     con = _connect_spatial(db_path)
 
-    out_table = _sel(cfg, "pipeline.add_parcels_data.out_table", "(empty)")   
+    out_table = _sel(cfg, "pipeline.add_parcels_data.out_table", "(empty)")
 
     logger.info(f"Writing output to DuckDB table {out_table}...")
     rows = write_geodf_to_duckdb(

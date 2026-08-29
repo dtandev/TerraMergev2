@@ -1,5 +1,4 @@
 # conf/pipeline/make_hexagons.yaml
-# @package _global_
 
 make: false
 

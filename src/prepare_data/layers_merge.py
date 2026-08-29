@@ -1,9 +1,8 @@
 # src/prepare_data/layers_merge.py
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, Iterable, List
 import shutil
+from pathlib import Path
 
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -27,7 +26,9 @@ def run_layers_merge(cfg: DictConfig) -> None:
     base_dir = Path(OmegaConf.select(cfg, "data.base_dir")).expanduser().resolve()
     out_subdir = str(OmegaConf.select(cfg, "prepare.output_subdir", default="parquets"))
     overwrite = bool(OmegaConf.select(cfg, "prepare.merge.overwrite", default=False))
-    layer_map: Dict[str, List[str]] = dict(OmegaConf.select(cfg, "prepare.layer_name_map", default={}))
+    layer_map: dict[str, list[str]] = dict(
+        OmegaConf.select(cfg, "prepare.layer_name_map", default={})
+    )
 
     out_root = base_dir / out_subdir
     logger.info("START layers_merge | root={}", out_root)
@@ -63,7 +64,9 @@ def run_layers_merge(cfg: DictConfig) -> None:
                                 try:
                                     dest.unlink()
                                 except Exception as e:
-                                    logger.warning("Nie mogę usunąć istniejącego pliku ({}): {}", dest, e)
+                                    logger.warning(
+                                        "Nie mogę usunąć istniejącego pliku ({}): {}", dest, e
+                                    )
                             else:
                                 logger.warning("Pominięto (istnieje): {}", dest)
                                 continue

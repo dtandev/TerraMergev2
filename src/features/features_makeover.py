@@ -1,9 +1,10 @@
 # features_makeover.py
 from __future__ import annotations
+
 import re
+
 import numpy as np
 import pandas as pd
-from typing import Optional
 
 
 class FeaturesMakeover:
@@ -13,9 +14,9 @@ class FeaturesMakeover:
       - uzg_bon_score : bonitacja OZK wg reguły: I=6 ... VI=1; sufiks 'B' → -0.5
     """
 
-    _BON_BASE = {"I":6.0, "II":5.0, "III":4.0, "IV":3.0, "V":2.0, "VI":1.0}
+    _BON_BASE = {"I": 6.0, "II": 5.0, "III": 4.0, "IV": 3.0, "V": 2.0, "VI": 1.0}
     # dopasowujemy CAŁOŚĆ napisu, kolejność od najdłuższych
-    _BON_RE   = re.compile(r"^(VI|IV|III|II|V|I)([ABZ])?$", re.IGNORECASE)
+    _BON_RE = re.compile(r"^(VI|IV|III|II|V|I)([ABZ])?$", re.IGNORECASE)
 
     def add_uzg_ozu_simple(
         self, df: pd.DataFrame, *, ozu_col: str = "ozu", out_col: str = "uzg_ozu_simple"
@@ -32,28 +33,39 @@ class FeaturesMakeover:
         if ozk_col not in df.columns:
             raise KeyError(f"Brak kolumny '{ozk_col}' w DataFrame.")
         out = df.copy()
-        out[out_col] = pd.Series(out[ozk_col], dtype="string").map(self._bon_score_rule).astype("Float64")
+        out[out_col] = (
+            pd.Series(out[ozk_col], dtype="string").map(self._bon_score_rule).astype("Float64")
+        )
         return out
 
     # --- prywatne ---
     @staticmethod
-    def _simplify_ozu(value: Optional[str]) -> Optional[str]:
+    def _simplify_ozu(value: str | None) -> str | None:
         if value is None or pd.isna(value):
             return np.nan
         head = str(value).strip().split("-", 1)[0]
         head_up = head.upper()
-        if head == "dr":        return "dr"
-        if head_up.startswith("B"): return "B"
-        if head_up.startswith("L"): return "L"
-        if head_up.startswith("W"): return "W"
-        if head_up.startswith("T"): return "T"
-        if head_up.startswith("K"): return "K"
-        if head_up.startswith("P"): return "Ps"
-        if head_up.startswith("R"): return "R"
-        if head in ("R", "Ł", "Ps", "S"): return head
+        if head == "dr":
+            return "dr"
+        if head_up.startswith("B"):
+            return "B"
+        if head_up.startswith("L"):
+            return "L"
+        if head_up.startswith("W"):
+            return "W"
+        if head_up.startswith("T"):
+            return "T"
+        if head_up.startswith("K"):
+            return "K"
+        if head_up.startswith("P"):
+            return "Ps"
+        if head_up.startswith("R"):
+            return "R"
+        if head in ("R", "Ł", "Ps", "S"):
+            return head
         return head_up
 
-    def _bon_score_rule(self, s: Optional[str]) -> float:
+    def _bon_score_rule(self, s: str | None) -> float:
         """
         I=6, II=5, III=4, IV=3, V=2, VI=1; sufiks 'B' → -0.5; 'A' bez zmiany.
         Przykłady: 'IIIa'→4.0, 'III b'→3.5, 'ivB'→2.5, 'VI'→1.0.
@@ -66,11 +78,11 @@ class FeaturesMakeover:
         if not m:
             return np.nan
         base = self._BON_BASE[m.group(1)]
-        sub  = m.group(2)
+        sub = m.group(2)
         if sub == "B":
             base -= 0.5
         return float(base)
-    
+
     # ─────────── 1) Sanitizacja źródła ───────────
     @staticmethod
     def _sanitize_mpzp_source(
@@ -121,11 +133,9 @@ class FeaturesMakeover:
         )
 
         # 2) zbuduj mapowanie: etykieta_oryginalna -> grupa_glowna
-        mapping = (
-            mapping_df
-            .drop_duplicates(mapping_orig_col)
-            .set_index(mapping_orig_col)[mapping_group_col]
-        )
+        mapping = mapping_df.drop_duplicates(mapping_orig_col).set_index(mapping_orig_col)[
+            mapping_group_col
+        ]
 
         # 3) zmapuj do grupy głównej z fallbackiem
         out[out_col] = ser.map(mapping).fillna(placeholder)

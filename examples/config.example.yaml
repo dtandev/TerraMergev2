@@ -1,0 +1,52 @@
+# Example of conf/config.yaml with machine-specific absolute paths blanked out.
+# Copy relevant values into your own conf/config.yaml (or override via CLI, e.g.
+# `python rule_them_all.py data.base_dir=...`) — do not commit real local paths.
+
+# === CONFIG ROOT (minimal) ===
+defaults:
+  - prepare: default
+  - features: default
+  - pipeline: make_hexagons
+  - dataset: default
+  - model: default
+  - _self_
+
+
+data:
+  # Override from CLI: data.base_dir=/mnt/c/...
+  base_dir: "TODO: set path"          # root directory of yearly EGIB .gdb exports (rok_YYYY/*.gdb)
+  duckdb_path: "TODO: set path"       # target DuckDB database file
+  transactions_path: "TODO: set path" # transaction-prices Parquet file
+  mpzp_mapping_csv: "TODO: set path"  # MPZP (zoning plan) mapping CSV
+
+# DuckDB initialization (speeds up repeated Parquet operations)
+duckdb:
+  init: true # run once, then not needed again
+  schema: "egib"
+  threads: null
+  memory_limit: null # e.g. "8GB"
+
+wfs:
+  url: "https://integracja.e-mapa.net/cgi-bin/mpzp"
+  version: "1.1.0"          # try 2.0.0; fall back to 1.1.0 if the server complains
+  srsname: "EPSG:2180"
+  timeout_s: 60
+  layers:
+    - typename: "ms:przeznaczenia"
+      geom_field: "geometry"
+      alias: "przeznaczenia"   # used in the output filename and the 'wfs_layer' column
+    - typename: "ms:plany"
+      geom_field: "geometry"
+      alias: "plany"
+
+
+hydra:
+  run:
+    dir: artifacts/reports/${now:%Y%m%d_%H%M%S}
+  output_subdir: null
+
+logging:
+  console_level: INFO
+  file_level: INFO
+  log_dir: artifacts/logs
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <7}</level> | <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>"

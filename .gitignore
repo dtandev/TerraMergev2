@@ -213,3 +213,12 @@ __marimo__/
 /duckdb/*
 /models/*
 /data/*
+
+# runtime logs (added by /scaffold — logging.log_dir defaults to artifacts/logs)
+logs/
+artifacts/logs/
+
+# audit output (generated, not committed)
+AUDIT.md
+SCAFFOLD_TODO.md
+pyproject.toml.proposal

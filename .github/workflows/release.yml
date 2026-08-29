@@ -1,0 +1,63 @@
+name: Release
+
+# Version bumps and tags are never decided on a feature branch (two PRs open in
+# parallel would each guess the same "next version" independently). Instead, this
+# runs strictly after a PR lands on `main`, computing the next version from
+# whatever `main` actually looks like at that moment.
+on:
+  push:
+    branches: [main]
+
+# If two merges land close together, the second run waits for the first to finish
+# its bump+tag+push before it starts — so it always computes the version *after*
+# the first release, never the same one twice.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and update changelog
+        id: bump
+        run: |
+          set +e
+          uv run cz bump --changelog --yes
+          code=$?
+          set -e
+          # 3 = NO_COMMITS_FOUND, 21 = NO_COMMITS_TO_BUMP (commitizen's own codes for "genuinely
+          # nothing to release" — every other non-zero code is a real failure (bad config, a
+          # missing tag cz can't reconcile, etc.) and must fail the job loudly, not get folded
+          # into the same "nothing to release" bucket a silent bug can hide behind.
+          if [ "$code" -eq 0 ]; then
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 3 ] || [ "$code" -eq 21 ]; then
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "No version-worthy commits since the last tag — nothing to release."
+          else
+            echo "cz bump failed with exit code $code — see log above." >&2
+            exit "$code"
+          fi
+
+      - name: Push version bump and tag
+        if: steps.bump.outputs.bumped == 'true'
+        run: git push origin main --follow-tags

@@ -1,26 +1,25 @@
 # src/prepare_data/prepare_data.py
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
 import re
+from pathlib import Path
 
 import geopandas as gpd
 from loguru import logger
-from osgeo import ogr
 from omegaconf import DictConfig, OmegaConf
+from osgeo import ogr
 from tqdm import tqdm
 
 # --- Reguły/stałe domenowe (na później łatwo przenieść do YAML, jeśli zechcesz) ---
 YEAR_PATTERN = re.compile(r"^rok_(\d{4})$")
 UNIT_PATTERN = re.compile(r"(2815\d{2}_\d)")
 
-RENAME_2020_TO_2024: Dict[str, str] = {
-    "G5IDD":        "idDzialki",
-    "g5idd":        "idDzialki",   # <- dodane: legacy bywało też małymi literami
+RENAME_2020_TO_2024: dict[str, str] = {
+    "G5IDD": "idDzialki",
+    "g5idd": "idDzialki",  # <- dodane: legacy bywało też małymi literami
     "SHAPE_Length": "Shape_Length",
-    "SHAPE_Area":   "Shape_Area",
-    "geometry":     "geometry",  # no-op, zostawione dla kompletności
+    "SHAPE_Area": "Shape_Area",
+    "geometry": "geometry",  # no-op, zostawione dla kompletności
 }
 
 
@@ -29,14 +28,14 @@ def _to_uppercase_columns(
     gdf: gpd.GeoDataFrame,
     *,
     uppercase_geometry: bool = True,
-) -> Tuple[gpd.GeoDataFrame, Dict[str, str]]:
+) -> tuple[gpd.GeoDataFrame, dict[str, str]]:
     """UPPERCASE nazw kolumn, zachowując aktywność kolumny geometry. Kolizje → __2, __3, ..."""
     # Kluczowa zmiana: zawsze bierz aktywną nazwę kolumny geometrii; nie sprawdzaj jej obecności w columns,
     # bo po rename() mogłaby "zniknąć" logicznie i stracilibyśmy aktywną geometrię.
-    geom_name: Optional[str] = gdf.geometry.name
+    geom_name: str | None = gdf.geometry.name
 
     seen: set[str] = set()
-    rename_map: Dict[str, str] = {}
+    rename_map: dict[str, str] = {}
 
     for col in gdf.columns:
         target = col.upper()
@@ -65,15 +64,14 @@ def _to_uppercase_columns(
     return gdf, rename_map
 
 
-
-def _extract_polygon_layers(gdb_path: Path) -> List[Tuple[str, str]]:
+def _extract_polygon_layers(gdb_path: Path) -> list[tuple[str, str]]:
     """Zwraca listę (layer_name, geom_type) dla warstw typu Polygon/MultiPolygon w GDB."""
     ds = ogr.Open(str(gdb_path), 0)
     if ds is None:
         logger.error("Nie można otworzyć GDB: {}", gdb_path)
         return []
 
-    layers: List[Tuple[str, str]] = []
+    layers: list[tuple[str, str]] = []
     for i in range(ds.GetLayerCount()):
         layer = ds.GetLayerByIndex(i)
         name = layer.GetName()
@@ -90,7 +88,7 @@ def _export_to_parquet(
     layer_name: str,
     out_path: Path,
     *,
-    year: Optional[int] = None,
+    year: int | None = None,
     uppercase_geometry: bool = True,
 ) -> None:
     """Eksport pojedynczej warstwy do Parquet + UPPERCASE kolumn + opcjonalne mapowanie legacy."""
@@ -128,7 +126,9 @@ def run_extraction_polygons(cfg: DictConfig) -> None:
 
     uppercase_geometry = bool(OmegaConf.select(cfg, "prepare.uppercase_geometry", default=True))
     rename_legacy = bool(OmegaConf.select(cfg, "prepare.rename_legacy_2020", default=True))
-    output_filename = str(OmegaConf.select(cfg, "prepare.output_filename", default="input_data.parquet"))
+    output_filename = str(
+        OmegaConf.select(cfg, "prepare.output_filename", default="input_data.parquet")
+    )
 
     logger.info("START run_extraction_polygons | base_dir={} → out_dir={}", base_dir, out_dir)
 

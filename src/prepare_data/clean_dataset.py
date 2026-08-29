@@ -1,13 +1,13 @@
-# src/prepare_data/clean_dataset.py
-from __future__ import annotations
-
 """Clean GeoParquet files *in‑place* and optionally append the result to DuckDB.
 
 Logging – now verbose again: every sizeable action is logged with `loguru`.
 """
 
-from pathlib import Path
+# src/prepare_data/clean_dataset.py
+from __future__ import annotations
+
 import re
+from pathlib import Path
 
 import duckdb
 import geopandas as gpd
@@ -21,6 +21,7 @@ from tqdm import tqdm
 # --------------------------------------------------------------------------------------
 # UTILS
 # --------------------------------------------------------------------------------------
+
 
 def _std_geom_name(gdf: gpd.GeoDataFrame, target: str = "geometry") -> gpd.GeoDataFrame:
     if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry is None:
@@ -66,9 +67,11 @@ def _deduplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
         logger.debug("Dropped {} duplicated columns", removed)
     return df
 
+
 # --------------------------------------------------------------------------------------
 # PARQUET SAFETY READER
 # --------------------------------------------------------------------------------------
+
 
 def _read_parquet_safe(path: Path) -> gpd.GeoDataFrame:
     try:
@@ -87,9 +90,11 @@ def _read_parquet_safe(path: Path) -> gpd.GeoDataFrame:
             return gpd.GeoDataFrame.from_arrow(pa.concat_tables(tables))
         raise
 
+
 # --------------------------------------------------------------------------------------
 # DUCKDB HELPERS
 # --------------------------------------------------------------------------------------
+
 
 def _duck_table_columns(con: duckdb.DuckDBPyConnection, full_tbl: str) -> list[str]:
     cols = con.execute(f"PRAGMA table_info({full_tbl});").fetchall()
@@ -119,13 +124,12 @@ def _append_to_duckdb(
     df_db = _deduplicate_columns(df_db)
 
     full_tbl = f'{schema}."{layer}"'
-    con.register("_clean_df", df_db)          # tymczasowa tabela w pamięci
+    con.register("_clean_df", df_db)  # tymczasowa tabela w pamięci
 
     # -- 1) CREATE TABLE (jednorazowo) --------------------------------------
     if layer not in tables_created:
         cols_def = ", ".join(
-            'ST_GeomFromWKB(geometry) AS geometry' if c == "geometry"
-            else f'"{c}"'
+            "ST_GeomFromWKB(geometry) AS geometry" if c == "geometry" else f'"{c}"'
             for c in df_db.columns
         )
         con.execute(f"""
@@ -142,10 +146,9 @@ def _append_to_duckdb(
     insert_cols = [c for c in df_db.columns if c in tbl_cols]
 
     if insert_cols:
-        cols_sql   = ", ".join(f'"{c}"' for c in insert_cols)
+        cols_sql = ", ".join(f'"{c}"' for c in insert_cols)
         select_sql = ", ".join(
-            'ST_GeomFromWKB(geometry)' if c == "geometry" else f'"{c}"'
-            for c in insert_cols
+            "ST_GeomFromWKB(geometry)" if c == "geometry" else f'"{c}"' for c in insert_cols
         )
         con.execute(f"""
             INSERT INTO {full_tbl} ({cols_sql})
@@ -156,9 +159,11 @@ def _append_to_duckdb(
 
     con.unregister("_clean_df")
 
+
 # --------------------------------------------------------------------------------------
 # MAIN
 # --------------------------------------------------------------------------------------
+
 
 def run_clean_dataset(cfg: DictConfig) -> None:
     if not bool(OmegaConf.select(cfg, "prepare.clean_dataset.enabled", default=True)):
@@ -171,8 +176,16 @@ def run_clean_dataset(cfg: DictConfig) -> None:
     layers = list(OmegaConf.select(cfg, "prepare.clean_dataset.layers", default=[]))
     units_filter = set(OmegaConf.select(cfg, "prepare.clean_dataset.units", default=[]))
 
-    id_col = str(OmegaConf.select(cfg, "prepare.clean_dataset.id_column", default="iddzialki")).lower()
-    regex = str(OmegaConf.select(cfg, "prepare.clean_dataset.id_pattern", default=r"^\s*(?P<jednostka>\d{6}_\d)\.(?P<obreb>\d{4})\.(?P<nr_dzialki>\d+(?:/\d+)*)\s*$"))
+    id_col = str(
+        OmegaConf.select(cfg, "prepare.clean_dataset.id_column", default="iddzialki")
+    ).lower()
+    regex = str(
+        OmegaConf.select(
+            cfg,
+            "prepare.clean_dataset.id_pattern",
+            default=r"^\s*(?P<jednostka>\d{6}_\d)\.(?P<obreb>\d{4})\.(?P<nr_dzialki>\d+(?:/\d+)*)\s*$",
+        )
+    )
 
     apply = "prepare.clean_dataset.apply"
     apply_lowercase = bool(OmegaConf.select(cfg, f"{apply}.lowercase", default=False))
@@ -181,7 +194,9 @@ def run_clean_dataset(cfg: DictConfig) -> None:
 
     overwrite = bool(OmegaConf.select(cfg, "prepare.clean_dataset.overwrite", default=False))
     write_db = bool(OmegaConf.select(cfg, "prepare.clean_dataset.write_duckdb", default=False))
-    db_path = Path(str(OmegaConf.select(cfg, "data.duckdb_path", default="artifacts/duckdb/egib.duckdb"))).expanduser()
+    db_path = Path(
+        str(OmegaConf.select(cfg, "data.duckdb_path", default="artifacts/duckdb/egib.duckdb"))
+    ).expanduser()
 
     pat = re.compile(regex)
 
@@ -189,7 +204,9 @@ def run_clean_dataset(cfg: DictConfig) -> None:
         logger.error("Katalog danych nie istnieje: {}", root)
         return
 
-    unit_dirs = [d for d in root.iterdir() if d.is_dir() and (not units_filter or d.name in units_filter)]
+    unit_dirs = [
+        d for d in root.iterdir() if d.is_dir() and (not units_filter or d.name in units_filter)
+    ]
     if not unit_dirs:
         logger.warning("Brak jednostek do przetworzenia w: {}", root)
         return
@@ -202,7 +219,9 @@ def run_clean_dataset(cfg: DictConfig) -> None:
         con.execute("INSTALL spatial; LOAD spatial; CREATE SCHEMA IF NOT EXISTS egib;")
         logger.info("DuckDB output ON → {}", db_path)
 
-    logger.info("CLEAN_DATASET start | layers={} | overwrite={} | write_db={}", layers, overwrite, write_db)
+    logger.info(
+        "CLEAN_DATASET start | layers={} | overwrite={} | write_db={}", layers, overwrite, write_db
+    )
 
     for unit_dir in tqdm(unit_dirs, desc="🏷️  Jednostki"):
         for layer in layers:
@@ -211,7 +230,9 @@ def run_clean_dataset(cfg: DictConfig) -> None:
                 logger.debug("Unit '{}' lacks layer '{}'", unit_dir.name, layer)
                 continue
 
-            for ydir in [p for p in layer_dir.iterdir() if p.is_dir() and p.name.startswith("year=")]:
+            for ydir in [
+                p for p in layer_dir.iterdir() if p.is_dir() and p.name.startswith("year=")
+            ]:
                 try:
                     yr = int(ydir.name.split("=", 1)[-1])
                 except ValueError:
@@ -230,13 +251,17 @@ def run_clean_dataset(cfg: DictConfig) -> None:
                             gdf = _lowercase_preserve_geom(gdf)
                         if drop_cols:
                             before = set(gdf.columns)
-                            gdf = gdf.drop(columns=[c for c in drop_cols if c in gdf.columns], errors="ignore")
+                            gdf = gdf.drop(
+                                columns=[c for c in drop_cols if c in gdf.columns], errors="ignore"
+                            )
                             removed = before - set(gdf.columns)
                             if removed:
                                 logger.debug("Dropped cols {} from {}", sorted(removed), f.name)
 
                         gdf["year"] = _cast_year(gdf.get("year"), fallback=yr)
-                        if crs_target and (gdf.crs is None or gdf.crs.to_string() != str(crs_target)):
+                        if crs_target and (
+                            gdf.crs is None or gdf.crs.to_string() != str(crs_target)
+                        ):
                             gdf = gdf.to_crs(crs_target, inplace=False)
                         gdf = _parse_id(gdf, id_col=id_col, pat=pat)
                         gdf = _deduplicate_columns(gdf)
