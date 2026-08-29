@@ -8,6 +8,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.2.5 (2026-08-29)
+
+### Refactor
+
+- **config**: replace Hydra with a plain OmegaConf loader
+
 ## v0.2.4 (2026-08-29)
 
 ### Fix
