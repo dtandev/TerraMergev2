@@ -19,6 +19,7 @@ from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_s
 
 from src.common.config_utils import sel as _sel
 from src.common.duckdb_utils import connect_duckdb as _connect_spatial
+from src.common.duckdb_utils import write_geoparquet
 
 # =========================
 # Logging & DB
@@ -770,8 +771,7 @@ def run_training(cfg: DictConfig) -> None:
         gdf_out = gpd.GeoDataFrame(export_df, geometry="geometry", crs="EPSG:2180")
 
         out_gpq = model_dir / f"predictions_{'_'.join(map(str, inference_years))}.gpq"
-        # GeoParquet: requires pyarrow; file extension commonly .parquet, but .gpq is also fine internally
-        gdf_out.to_parquet(out_gpq, index=False)
+        write_geoparquet(gdf_out, out_gpq)
         logger.success("Inference saved → {}", out_gpq.resolve())
     else:
         logger.warning("Inference skipped (no rows for {}).", inference_years)
