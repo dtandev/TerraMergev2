@@ -337,7 +337,7 @@ def run_add_uzg(cfg: DictConfig) -> None:
             _sel(
                 cfg,
                 "features.add_uzg.duckdb_path",
-                _sel(cfg, "data.duckdb_path", base_dir / "egib.duckdb"),
+                _sel(cfg, "data.duckdb_path", base_dir / "terramerge.duckdb"),
             )
         )
         .expanduser()

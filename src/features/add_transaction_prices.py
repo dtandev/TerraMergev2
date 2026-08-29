@@ -50,7 +50,9 @@ def run_load_transactions(cfg: DictConfig) -> None:
         logger.info("load_transactions disabled – skipping")
         return
 
-    db_path = Path(str(_sel(cfg, "data.duckdb_path", "artifacts/duckdb/egib.duckdb"))).expanduser()
+    db_path = Path(
+        str(_sel(cfg, "data.duckdb_path", "artifacts/duckdb/terramerge.duckdb"))
+    ).expanduser()
     tx_path = Path(str(_sel(cfg, "data.transactions_path", ""))).expanduser()
 
     if not db_path.exists():

@@ -39,7 +39,7 @@ def run_duckdb_init(cfg: DictConfig) -> None:
     Zero tabel, zero ładowania danych – tylko czysta inicjalizacja.
     """
     db_path = Path(
-        str(OmegaConf.select(cfg, "data.duckdb_path", default="artifacts/duckdb/egib.duckdb"))
+        str(OmegaConf.select(cfg, "data.duckdb_path", default="artifacts/duckdb/terramerge.duckdb"))
     )
     schema = str(OmegaConf.select(cfg, "duckdb.schema", default="egib"))
     db_path.parent.mkdir(parents=True, exist_ok=True)

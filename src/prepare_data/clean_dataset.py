@@ -197,7 +197,7 @@ def run_clean_dataset(cfg: DictConfig) -> None:
     overwrite = bool(OmegaConf.select(cfg, "prepare.clean_dataset.overwrite", default=False))
     write_db = bool(OmegaConf.select(cfg, "prepare.clean_dataset.write_duckdb", default=False))
     db_path = Path(
-        str(OmegaConf.select(cfg, "data.duckdb_path", default="artifacts/duckdb/egib.duckdb"))
+        str(OmegaConf.select(cfg, "data.duckdb_path", default="artifacts/duckdb/terramerge.duckdb"))
     ).expanduser()
 
     pat = re.compile(regex)
