@@ -51,4 +51,3 @@ clean_dataset:
     lowercase: true              # zamień nazwy kolumn na lower
     crs_target: "EPSG:2180"      # null → pierwszy napotkany CRS staje się referencyjny
     drop_columns: ["G5NOS", "G5WRT", "G5DWR", "G5PEW", "G5RZN", "G5DWW", "G5DTW", "G5DTU", "ID", "IDR", "ST_OBJ", "G5IDR", "G5DZP"]  # jeśli chcesz bezpiecznie zrzucić nadmiarowe kolumny
-

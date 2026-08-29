@@ -45,7 +45,7 @@ calculate_neighborhood:
   out_table: dataset.Parcels_neighborhood_${dataset.resolution}   # !!! IMPORTANT: Update this to match your output table naming convention
 
 
-prune_features: 
+prune_features:
   enabled: false
   protected_cols:
     - "year"
@@ -72,4 +72,3 @@ prune_features:
 join_y_label:
   enabled: true
   y_label_col: "y_next" #y_next_2, y_next_3
-

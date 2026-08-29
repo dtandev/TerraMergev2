@@ -19,10 +19,6 @@ dependencies = [
     "loguru",
     "numpy",
     "omegaconf",
-    "gdal==3.13.1",          # TODO: verify this — must match your system libgdal exactly (`gdal-config --version`);
-                             # pinned here to this machine's installed version (3.13.1). If `uv sync` fails with a
-                             # "Python bindings require at least libgdal X, but Y was found" error, update this pin
-                             # to match `gdal-config --version` on your machine.
     "pandas<3",              # pandas 3.0.5 segfaults constructing GeoDataFrames in this environment
                              # (pyarrow-backed string array crash) — pinned to the stable 2.x line
     "psutil",
@@ -31,6 +27,19 @@ dependencies = [
     "shapely",
     "scikit-learn",
     "tqdm",
+]
+
+[project.optional-dependencies]
+# GDAL is kept out of the default dependency set: it has no manylinux wheels and its
+# build must match the local libgdal exactly. Install it locally with
+# `uv sync --extra local` (this is what `just setup` runs). CI does NOT use this extra —
+# it gets GDAL 3.13 from conda-forge instead (see .github/workflows/check.yml), because
+# the official GDAL 3.13 containers force Python 3.14, which this project cannot use
+# (h3 3.7.7 caps Python at <3.13).
+local = [
+    "gdal==3.13.1",          # must match your system libgdal (`gdal-config --version`);
+                             # if `uv sync --extra local` fails with a "Python bindings require
+                             # at least libgdal X, but Y was found" error, update this pin to match.
 ]
 
 [dependency-groups]

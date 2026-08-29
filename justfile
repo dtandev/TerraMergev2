@@ -9,7 +9,7 @@ default:
 # Install dependencies and set up the project environment
 setup:
     @echo "Setting up project environment..."
-    uv sync
+    uv sync --extra local          # --extra local pulls in GDAL (kept out of the default set; see pyproject.toml)
     uv run pre-commit install
     uv run pre-commit install --hook-type commit-msg
     @echo "Copying .env-example to .env (if not exists)..."
