@@ -25,7 +25,7 @@ def _resolve_db_path(cfg: DictConfig) -> Path:
     """
     Resolve DuckDB path from config without forcing .resolve().
     """
-    p = _sel(cfg, "data.duckdb_path", "egib.duckdb")
+    p = _sel(cfg, "data.duckdb_path", "terramerge.duckdb")
     return Path(p).expanduser()
 
 

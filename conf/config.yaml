@@ -11,7 +11,10 @@ defaults:
 data:
   # Wartości pochodzą z .env (patrz .env-example) — nadpisujesz też z CLI: data.base_dir=/mnt/c/...
   base_dir: "${oc.env:TERRAMERGE_BASE_DIR}"
-  duckdb_path: "${oc.env:TERRAMERGE_DUCKDB_PATH,artifacts/duckdb/egib.duckdb}"
+  # The db file stem must NOT be "egib": DuckDB names the default catalog after the file
+  # stem, and the pipeline creates a schema named "egib", so an egib.duckdb file makes
+  # `egib.<table>` an ambiguous catalog-vs-schema reference (BinderException). Keep it distinct.
+  duckdb_path: "${oc.env:TERRAMERGE_DUCKDB_PATH,artifacts/duckdb/terramerge.duckdb}"
   transactions_path: "${oc.env:TERRAMERGE_TRANSACTIONS_PATH,artifacts/parquet/transakcje.parquet}"
   mpzp_mapping_csv: "${oc.env:TERRAMERGE_MPZP_MAPPING_CSV,artifacts/csv/mpzp.csv}"
 

@@ -71,6 +71,14 @@ class TestConfigNestingRegression:
         # `enabled` key at the config root, clobbering each other. There must be no such key now.
         assert OmegaConf.select(cfg, "enabled", default=_MISSING) is _MISSING
 
+    def test_duckdb_path_stem_differs_from_schema(self, cfg):
+        # DuckDB names its default catalog after the db file stem. The pipeline creates a schema
+        # named `duckdb.schema` ("egib"), so a db file with that same stem makes `egib.<table>`
+        # an ambiguous catalog-vs-schema reference (BinderException). Guard the default apart.
+        path = OmegaConf.select(cfg, "data.duckdb_path")
+        schema = OmegaConf.select(cfg, "duckdb.schema", default="egib")
+        assert Path(str(path)).stem != schema
+
     def test_base_dir_required_env_var_is_enforced(self, monkeypatch):
         monkeypatch.delenv("TERRAMERGE_BASE_DIR", raising=False)
         with initialize_config_dir(version_base=None, config_dir=CONF_DIR):
