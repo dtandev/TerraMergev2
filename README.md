@@ -43,16 +43,20 @@ nano .env       # fill in your local EGIB dataset paths
 ## Configuration
 
 All machine-specific values (the EGIB dataset paths) live in `.env`, not in `conf/*.yaml` — see
-`.env-example` for the full list. `conf/config.yaml` and `conf/data/fast.yaml` reference them via
-Hydra's `${oc.env:VAR_NAME}` resolver, loaded from `.env` by `python-dotenv` at startup. Everything
-else (feature toggles, model hyperparameters, thresholds) lives in `conf/` and can be overridden
-on the command line, e.g. `model.n_estimators=800`.
+`.env-example` for the full list. `conf/config.yaml` references them via OmegaConf's
+`${oc.env:VAR_NAME}` resolver, loaded from `.env` by `python-dotenv` at startup. Everything else
+(feature toggles, model hyperparameters, thresholds) lives in `conf/` and can be overridden on the
+command line, e.g. `model.n_estimators=800`.
+
+The config is composed by `src/common/config_loader.py`: `conf/config.yaml` lists the per-stage
+group files under an `includes:` mapping, each nested under its group key; CLI `key.path=value`
+arguments are applied on top via `OmegaConf.from_dotlist`.
 
 ---
 
 ## Usage
 
-The pipeline is orchestrated by `src/main.py` (Hydra) and driven through `just`:
+The pipeline is orchestrated by `src/main.py` and driven through `just`:
 
 ```bash
 just run <base_dir>        # full pipeline, all 5 stages, end-to-end
@@ -63,7 +67,7 @@ just dataset <base_dir>    # stage 4 only — build labels + neighborhood aggreg
 just model <base_dir>      # stage 5 only — train the model
 ```
 
-Every recipe accepts extra Hydra overrides after `<base_dir>`, e.g.:
+Every recipe accepts extra `key.path=value` overrides after `<base_dir>`, e.g.:
 
 ```bash
 just model /data/egib model.n_estimators=800 logging.console_level=DEBUG
@@ -79,10 +83,10 @@ uv run python -m src.main data.base_dir=/data/egib prepare.enabled=true ...
 
 ## Examples
 
-See [`examples/`](examples/) for sanitized example Hydra configs (`config.example.yaml`,
-`data-fast.example.yaml`) — copy the values you need into your own `conf/config.yaml` /
-`conf/data/fast.yaml`, or override them on the command line as shown above. (Only these two files
-needed path sanitization; the rest of `conf/*.yaml` has no machine-specific values.)
+See [`examples/`](examples/) for a sanitized example config (`config.example.yaml`) — copy the
+values you need into your own `conf/config.yaml`, or override them on the command line as shown
+above. (Only this file needed path sanitization; the rest of `conf/*.yaml` has no machine-specific
+values.)
 
 ---
 

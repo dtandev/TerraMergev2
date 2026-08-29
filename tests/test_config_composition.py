@@ -5,18 +5,19 @@ root while most of the Python code read them as nested under their group name (`
 `features.*`, ...). OmegaConf.select()'s `default=` swallowed the mismatch instead of raising, so
 whole pipeline steps were always-skipped or always-crashed without any error at startup.
 
-This test composes the real conf/ tree with hydra.compose() and asserts the exact nested paths
-the code relies on actually resolve — so a future re-introduction of `@package _global_` (or a
-typo'd key) fails a test instead of failing silently in production.
+This test composes the real conf/ tree via src.common.config_loader.load_config() and asserts the
+exact nested paths the code relies on actually resolve — so a future re-introduction of a flattened
+group (or a typo'd key) fails a test instead of failing silently in production.
 """
 
 from pathlib import Path
 
 import pytest
-from hydra import compose, initialize_config_dir
 from omegaconf import OmegaConf
 
-CONF_DIR = str((Path(__file__).parent.parent / "conf").resolve())
+from src.common.config_loader import load_config
+
+CONF_DIR = (Path(__file__).parent.parent / "conf").resolve()
 
 _MISSING = object()
 
@@ -24,8 +25,7 @@ _MISSING = object()
 @pytest.fixture
 def cfg(monkeypatch):
     monkeypatch.setenv("TERRAMERGE_BASE_DIR", "/tmp/fake_egib")
-    with initialize_config_dir(version_base=None, config_dir=CONF_DIR):
-        yield compose(config_name="config")
+    return load_config(conf_dir=CONF_DIR)
 
 
 NESTED_KEYS = [
@@ -67,8 +67,8 @@ class TestConfigNestingRegression:
         assert val is not None, f"'{key}' resolved to None"
 
     def test_no_stray_root_level_enabled_key(self, cfg):
-        # Before the @package _global_ fix, prepare/features/dataset default.yaml all landed an
-        # `enabled` key at the config root, clobbering each other. There must be no such key now.
+        # Each group's `enabled` must stay nested under its group key. A flattened group would
+        # land an `enabled` at the config root, clobbering the others. There must be no such key.
         assert OmegaConf.select(cfg, "enabled", default=_MISSING) is _MISSING
 
     def test_duckdb_path_stem_differs_from_schema(self, cfg):
@@ -81,8 +81,7 @@ class TestConfigNestingRegression:
 
     def test_base_dir_required_env_var_is_enforced(self, monkeypatch):
         monkeypatch.delenv("TERRAMERGE_BASE_DIR", raising=False)
-        with initialize_config_dir(version_base=None, config_dir=CONF_DIR):
-            bad_cfg = compose(config_name="config")
-            with pytest.raises(Exception):
-                # data.base_dir has no fallback default -> must fail loudly, not silently None.
-                OmegaConf.to_container(bad_cfg, resolve=True)
+        bad_cfg = load_config(conf_dir=CONF_DIR)
+        with pytest.raises(Exception):
+            # data.base_dir has no fallback default -> must fail loudly, not silently None.
+            OmegaConf.to_container(bad_cfg, resolve=True)

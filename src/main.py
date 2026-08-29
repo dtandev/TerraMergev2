@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-
-import hydra
 
 # Must be imported before any `osgeo` (GDAL) import anywhere in the process — importing GDAL's
 # bindings first and pyarrow.dataset afterwards segfaults at interpreter shutdown in this
@@ -12,8 +11,9 @@ import hydra
 import pyarrow.dataset  # noqa: F401
 from dotenv import load_dotenv
 from loguru import logger
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
+from src.common.config_loader import load_config
 from src.common.config_utils import sel
 from src.common.io_utils import setup_logging
 from src.features.add_geometric_features import run_add_geometric_features
@@ -25,16 +25,12 @@ from src.prepare_data.duckdb_init import run_duckdb_init
 from src.prepare_data.extract_polygons import run_extraction_polygons
 from src.prepare_data.layers_merge import run_layers_merge
 
-# Loaded here (not at module top) so it runs after all imports above but before Hydra composes
-# the config in run_all() below — conf/config.yaml and conf/data/fast.yaml reference these
-# variables via ${oc.env:VAR_NAME}, which reads from os.environ at resolve time.
+# Loaded before the config is composed in __main__ below — conf/config.yaml references
+# variables via ${oc.env:VAR_NAME}, which OmegaConf reads from os.environ at resolve time.
 load_dotenv()
 
 
-@hydra.main(config_path="../conf", config_name="config", version_base=None)
 def run_all(cfg: DictConfig) -> None:
-    OmegaConf.set_struct(cfg, False)
-
     log_dir = Path(sel(cfg, "logging.log_dir", "logs")).expanduser().resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
     setup_logging(
@@ -51,7 +47,7 @@ def run_all(cfg: DictConfig) -> None:
         ),
     )
 
-    logger.info("Hydra working dir: {}", Path.cwd())
+    logger.info("Working dir: {}", Path.cwd())
 
     base_dir_str = sel(cfg, "data.base_dir")
 
@@ -321,4 +317,6 @@ def run_all(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    run_all()
+    # CLI overrides use Hydra-style dot paths, e.g.
+    #   uv run python -m src.main data.base_dir=/data/egib prepare.enabled=true
+    run_all(load_config(sys.argv[1:]))
