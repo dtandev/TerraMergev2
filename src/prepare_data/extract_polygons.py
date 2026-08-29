@@ -117,8 +117,12 @@ def _export_layer_to_parquet(
 ) -> None:
     """Zapis pojedynczej (już wczytanej) warstwy do Parquet + UPPERCASE kolumn + legacy rename."""
     try:
-        if year is not None and year < 2021:
-            gdf = gdf.rename(columns=RENAME_2020_TO_2024)
+        # Apply the legacy→modern column rename unconditionally, not just for year<2021: real GDB
+        # deliveries keep the legacy names (G5IDD → idDzialki) even in recent years (confirmed on
+        # rok_2022 szczycieński), so the year gate left DzialkaEwidencyjna without an `iddzialki`
+        # column and every downstream step keyed on it failed. The map only renames columns that
+        # exist, so a genuinely modern delivery (already `idDzialki`) is untouched.
+        gdf = gdf.rename(columns=RENAME_2020_TO_2024)
 
         gdf, rename_map = _to_uppercase_columns(gdf, uppercase_geometry=uppercase_geometry)
 

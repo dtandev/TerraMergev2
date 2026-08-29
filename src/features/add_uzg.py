@@ -41,9 +41,12 @@ def _coalesce(df: pd.DataFrame, groups: dict[str, Sequence[str]]) -> pd.DataFram
         present = [c for c in srcs if c in df.columns]
         if not present:
             continue
-        out = df[present[0]].copy()
+        # Cast through object: read_geoparquet (DuckDB) can type an all-null variant column as
+        # nullable Int64, and filling it from a string variant (e.g. OZU code 'N' = nieużytki)
+        # would otherwise raise "invalid literal for int()". Object holds either kind.
+        out = df[present[0]].astype(object)
         for c in present[1:]:
-            out = out.fillna(df[c])
+            out = out.fillna(df[c].astype(object))
         df[tgt] = out
         df.drop(columns=[c for c in present if c != tgt], inplace=True)
     return df

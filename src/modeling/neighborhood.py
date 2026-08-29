@@ -124,6 +124,12 @@ def write_geodf_to_duckdb(
     ]
     cols_sql_str = ", ".join(cols_sql)
     sep = ", " if cols_sql_str else ""
+    # Create the target schema if the table is schema-qualified (e.g. dataset.Parcels_...). The
+    # 'dataset' schema is never created elsewhere, so without this the final write fails with
+    # "Schema with name dataset does not exist".
+    if "." in table:
+        schema = table.split(".", 1)[0].strip('"')
+        con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}";')
     con.execute(f"DROP TABLE IF EXISTS {table}")
     # ST_SetCRS makes the SRID embedded via to_wkb(include_srid=True) actually queryable through
     # ST_CRS() afterwards — ST_GeomFromWKB alone does not surface it in this DuckDB spatial version.
