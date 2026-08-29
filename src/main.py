@@ -6,7 +6,7 @@ import hydra
 
 # Must be imported before any `osgeo` (GDAL) import anywhere in the process — importing GDAL's
 # bindings first and pyarrow.dataset afterwards segfaults at interpreter shutdown in this
-# environment (verified: reversing the order avoids it). extract_polygons_from_gdb below imports
+# environment (verified: reversing the order avoids it). extract_polygons below imports
 # osgeo.ogr, and add_uzg imports pyarrow.dataset, so without this line the import order would be
 # wrong by accident of module load order.
 import pyarrow.dataset  # noqa: F401
@@ -22,7 +22,7 @@ from src.features.add_uzg import run_add_uzg
 from src.prepare_data.clean_dataset import run_clean_dataset
 from src.prepare_data.clean_directories import clean_directories
 from src.prepare_data.duckdb_init import run_duckdb_init
-from src.prepare_data.extract_polygons_from_gdb import run_extraction_polygons
+from src.prepare_data.extract_polygons import run_extraction_polygons
 from src.prepare_data.layers_merge import run_layers_merge
 
 # Loaded here (not at module top) so it runs after all imports above but before Hydra composes

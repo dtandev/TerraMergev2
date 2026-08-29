@@ -18,6 +18,8 @@ from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
+from src.common.duckdb_utils import write_geoparquet
+
 # --------------------------------------------------------------------------------------
 # UTILS
 # --------------------------------------------------------------------------------------
@@ -266,13 +268,12 @@ def run_clean_dataset(cfg: DictConfig) -> None:
                         gdf = _parse_id(gdf, id_col=id_col, pat=pat)
                         gdf = _deduplicate_columns(gdf)
 
-                        kwargs = dict(index=False, engine="pyarrow", use_dictionary=False)
                         if overwrite:
-                            gdf.to_parquet(f, **kwargs)
+                            write_geoparquet(gdf, f)
                             logger.success("Overwritten: {}", f.relative_to(root))
                         else:
                             cleaned = f.with_suffix(".clean.parquet")
-                            gdf.to_parquet(cleaned, **kwargs)
+                            write_geoparquet(gdf, cleaned)
                             logger.success("Saved clean copy: {}", cleaned.relative_to(root))
 
                         if write_db and con is not None:

@@ -31,6 +31,7 @@ def cfg(monkeypatch):
 NESTED_KEYS = [
     "prepare.enabled",
     "prepare.clean.enabled",
+    "prepare.swde_crs",
     "features.enabled",
     "features.add_uzg.enabled",
     "features.add_mpzp.enabled",
