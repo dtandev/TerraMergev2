@@ -9,7 +9,7 @@ from src.prepare_data.clean_dataset import (
     _parse_id,
     _std_geom_name,
 )
-from src.prepare_data.extract_polygons_from_gdb import _to_uppercase_columns
+from src.prepare_data.extract_polygons import _to_uppercase_columns
 
 
 def _gdf(geom_col_name: str = "geometry") -> gpd.GeoDataFrame:

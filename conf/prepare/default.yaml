@@ -19,6 +19,12 @@ output_filename: "input_data.parquet"
 uppercase_geometry: true
 rename_legacy_2020: true
 
+# SWDE (.swd) nie niesie żadnych metadanych CRS w pliku (w przeciwieństwie do GDB/GML/SHP) —
+# układ współrzędnych trzeba podać jawnie dla danego regionu. EPSG:2178 = CS2000 strefa 7,
+# poprawne dla powiatu szczycieńskiego / większości woj. warmińsko-mazurskiego (zakres kontraktu
+# O011 EGIB). Zmień, jeśli kiedyś uruchomisz ekstrakcję dla powiatu w innej strefie (5/6/8).
+swde_crs: "EPSG:2178"
+
 
 # 3) Scalanie warstw według mapy
 merge:
@@ -31,7 +37,10 @@ layer_name_map:
   DzialkaEwidencyjna: ["EGB_DzialkaEwidencyjna", "EGB_DzialkaEwidencyjnaPOLYGON", "G5G_DZE"]
   JednostkaEwidencyjna: ["EGB_JednostkaEwidencyjna", "G5G_JEW"]
   KonturKlasyfikacyjny: ["EGB_KonturKlasyfikacyjny", "G5G_KKL"]
-  KonturUzytkuGruntowego: ["EGB_KonturUzytkuGruntowego", "G5G_UZG"]
+  # G5G_KKL also feeds KonturUzytkuGruntowego: in legacy SHP deliveries it's the only .shp with
+  # real polygon geometry carrying a land-use attribute (G5OZU) — G5G_UZG itself is often
+  # attribute-only (a .dbf with no matching .shp), confirmed on real data (rok_2017 szczycieński).
+  KonturUzytkuGruntowego: ["EGB_KonturUzytkuGruntowego", "G5G_UZG", "G5G_KKL"]
   ObrebEwidencyjny: ["EGB_ObrebEwidencyjny", "G5G_OBR"]
   ObiektTrwaleZwiazanyZBudynkiem: ["EGB_ObiektTrwaleZwiazanyZBudynkiemPOLYGON"]
   ObszarZabudowany: ["G5G_OZN"]
