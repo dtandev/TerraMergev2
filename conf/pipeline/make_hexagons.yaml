@@ -3,14 +3,14 @@
 make: false
 
 make_hexagons:
-  enabled: false
+  enabled: true
 
   # --- wejście (skąd bierzemy bbox) ---
   schema_in: ${duckdb.schema}         # zwykle "egib"
   source_table: "kug"
   geom_column: "geometry"             # WKB (BLOB) w DB
   year_column: "year"
-  year: 2025                          # rok, dla którego generujemy heksy
+  year: 2024                          # rok, dla którego generujemy heksy
   source_crs: "EPSG:2180"             # CRS geometrii w tabeli wejściowej
 
 
@@ -18,14 +18,14 @@ make_hexagons:
   # --- wyjście ---
   out_schema: "hex"                   # docelowy schemat
   out_table_prefix: "Hexagons"
-  resolutions: [7, 8, 9]                 # listą możesz sterować, np. [7,8,9]
+  resolutions: [8]                 # listą możesz sterować, np. [7,8,9]
   overwrite: true
   geom_srid: 2180
 
 
 # ---- JEDNO ŹRÓDŁO PRAWDY dla gridu / rozdzielczości ----
 
-resolution: r9
+resolution: r8
 
 hex:
   table: "hex.Hexagons_${pipeline.resolution}"
@@ -80,7 +80,7 @@ add_mpzp_data:
   join_prefix: mpzp_
 
 add_kug_data:
-  enabled: false
+  enabled: true
   table: egib.kug
   out_table: hex.kug_${pipeline.resolution}
   klasy_uzg: ['R','Ł','Ps','N','L','dr','B','W','S','T','NB','K','E','O']

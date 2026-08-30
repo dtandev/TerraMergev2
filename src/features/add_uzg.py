@@ -82,14 +82,20 @@ def _load_tree(root: Path, crs_out: str | None) -> gpd.GeoDataFrame:
     all_cols = sorted(set().union(*(df.columns for df in parts)))
     parts = [df.reindex(columns=all_cols) for df in parts]
 
-    # unify CRS
-    g0 = parts[0]
-    for i in range(1, len(parts)):
-        if parts[i].crs != g0.crs:
-            parts[i] = parts[i].to_crs(g0.crs)
+    # unify CRS. Some year deliveries (a SHP without .prj, a GML with no CRS tag) yield geometry
+    # with no CRS ("naive"). A single obręb is always one CS2000 zone across years, so adopt the
+    # first known CRS as the reference and set it on the naive parts, instead of crashing on
+    # to_crs("Cannot transform naive geometries").
+    ref_crs = next((p.crs for p in parts if p.crs is not None), None)
+    if ref_crs is not None:
+        for i, part in enumerate(parts):
+            if part.crs is None:
+                parts[i] = part.set_crs(ref_crs, allow_override=True)
+            elif part.crs != ref_crs:
+                parts[i] = part.to_crs(ref_crs)
 
-    gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=g0.crs)
-    if crs_out and str(gdf.crs) != crs_out:
+    gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), geometry="geometry", crs=ref_crs)
+    if crs_out and gdf.crs is not None and str(gdf.crs) != crs_out:
         gdf = gdf.to_crs(crs_out)
     return gdf
 

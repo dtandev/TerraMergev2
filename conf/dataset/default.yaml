@@ -9,8 +9,13 @@ labels_for_parcels:
   table: "hex.DzialkaEwidencyjna_${dataset.resolution}"
   out_table: "labels.ParcelLabels_${dataset.resolution}"
   parcels_split_col_name: 'n_parcel'
+  # gf_area_ha_mean: geometry-derived mean parcel area [ha], aggregated from egib.GeometricFeatures.
+  # Always present and consistent across GDB/GML/SHP sources (unlike the old Esri "shape_area_mean",
+  # which only exists in GDB years). eps_abs is therefore in HECTARES: 0.01 ha == 100 m² (the prior
+  # threshold). A split is flagged when the hex mean parcel area drops by more than eps_abs ha.
+  mean_area_col: "gf_area_ha_mean"
   area_conservation_tol: 0.005
-  eps_abs: 100.0
+  eps_abs: 0.01
   extra_horizon: 5
 
 labels_for_uzg:
@@ -26,11 +31,13 @@ labels_for_uzg:
 
 calculate_neighborhood:
   enabled: true
+  # Core hex tables that are always built. MPZP/Transakcje are optional (external data: WFS /
+  # transactions parquet) and their pipeline steps are disabled by default, so listing their
+  # tables here made the merge fail with "table does not exist". Add them back only when their
+  # add_*_data steps are enabled and the tables exist.
   tables_to_split:
     - "hex.DzialkaEwidencyjna_${dataset.resolution}"
     - "hex.kug_${dataset.resolution}"
-    - "hex.MPZP_${dataset.resolution}"
-    - "hex.Transakcje_${dataset.resolution}"
   proxy_cols: ["split_proxy"]
   keys: ["hex_id","year"]
   table_with_labels: "labels.ParcelLabels_${dataset.resolution}" # "labels.kugLabels_${dataset.resolution}_sum_agri", "labels.kugLabels_${dataset.resolution}_uzg_R_share"
