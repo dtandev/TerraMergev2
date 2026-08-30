@@ -8,6 +8,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.2.6 (2026-08-30)
+
+### Fix
+
+- **pipeline**: clean reproducible features for all-years build
+- **crs**: normalise every layer to EPSG:2180 at extraction
+- **config**: align resolutions, enable core build stages, drop missing merge tables
+
 ## v0.2.5 (2026-08-29)
 
 ### Refactor
