@@ -35,18 +35,32 @@ from src.features.features_makeover import FeaturesMakeover
 # -----------------------------------------------------------------------------#
 
 
+def _blank_to_na(s: pd.Series) -> pd.Series:
+    """Object-cast a variant column and treat blank/whitespace strings as missing.
+
+    Cast through object because read_geoparquet (DuckDB) can type an all-null variant column as
+    nullable Int64, and filling it from a string variant (e.g. OZU code 'N' = nieużytki) would
+    otherwise raise "invalid literal for int()". Object holds either kind.
+
+    Legacy G5 GDB deliveries store an empty STRING '' (not NULL) in the unused variant — e.g.
+    G5G_UZG carries G5OZU='' while the real land-use code sits in G5OFU. Plain fillna won't look
+    past '', so a first-listed blank variant would mask a populated later one and OZU comes out
+    empty (observed on GDB-delivered years, e.g. rok_2017 szczycieński). Treat blank as missing.
+    """
+    s = s.astype(object)
+    blank = s.map(lambda v: isinstance(v, str) and v.strip() == "")
+    return s.mask(blank)
+
+
 def _coalesce(df: pd.DataFrame, groups: dict[str, Sequence[str]]) -> pd.DataFrame:
-    """Merge many-to-one column variants (first non-NA wins)."""
+    """Merge many-to-one column variants (first non-blank wins)."""
     for tgt, srcs in groups.items():
         present = [c for c in srcs if c in df.columns]
         if not present:
             continue
-        # Cast through object: read_geoparquet (DuckDB) can type an all-null variant column as
-        # nullable Int64, and filling it from a string variant (e.g. OZU code 'N' = nieużytki)
-        # would otherwise raise "invalid literal for int()". Object holds either kind.
-        out = df[present[0]].astype(object)
+        out = _blank_to_na(df[present[0]])
         for c in present[1:]:
-            out = out.fillna(df[c].astype(object))
+            out = out.fillna(_blank_to_na(df[c]))
         df[tgt] = out
         df.drop(columns=[c for c in present if c != tgt], inplace=True)
     return df
@@ -306,7 +320,14 @@ def run_add_uzg(cfg: DictConfig) -> None:
     units: list[str] = list(_sel(cfg, "features.add_uzg.units", []))
     parq_root = base_dir / "parquets"
     if not units:
-        units = [p.name for p in parq_root.iterdir() if p.is_dir()]
+        # Skip stray/empty dirs (e.g. macOS "281701_1 3" duplicates left by Finder) that carry no
+        # extracted layer data — iterating them as obrębs crashes _load_tree on the first missing
+        # layer and aborts the whole step. A real obręb always has some input_data.parquet.
+        units = [
+            p.name
+            for p in sorted(parq_root.iterdir())
+            if p.is_dir() and next(p.rglob("input_data.parquet"), None) is not None
+        ]
 
     logger.info("STEP[add_uzg] Start | units={} | CRS={}", units, target_crs)
     outputs: list[Path] = []

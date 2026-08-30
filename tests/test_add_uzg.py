@@ -40,6 +40,16 @@ class TestCoalesce:
         out = _coalesce(df, {"OZU": ["G5OZU", "G5OFU"]})
         assert list(out.columns) == ["KEEP"]
 
+    def test_blank_string_variant_falls_through_to_next(self):
+        # Legacy G5 GDB (e.g. rok_2017): G5OZU is an empty STRING '' (not NULL) while the real
+        # land-use code lives in G5OFU. The blank must not mask the populated later variant.
+        df = pd.DataFrame({"G5OZU": ["", "  ", "R"], "G5OFU": ["Ł", "Ps", "X"]})
+
+        out = _coalesce(df, {"OZU": ["G5OZU", "G5OFU"]})
+
+        assert list(out["OZU"]) == ["Ł", "Ps", "R"]
+        assert "G5OFU" not in out.columns
+
 
 class TestNormKkl:
     def _input(self, geom=None):
