@@ -320,7 +320,14 @@ def run_add_uzg(cfg: DictConfig) -> None:
     units: list[str] = list(_sel(cfg, "features.add_uzg.units", []))
     parq_root = base_dir / "parquets"
     if not units:
-        units = [p.name for p in parq_root.iterdir() if p.is_dir()]
+        # Skip stray/empty dirs (e.g. macOS "281701_1 3" duplicates left by Finder) that carry no
+        # extracted layer data — iterating them as obrębs crashes _load_tree on the first missing
+        # layer and aborts the whole step. A real obręb always has some input_data.parquet.
+        units = [
+            p.name
+            for p in sorted(parq_root.iterdir())
+            if p.is_dir() and next(p.rglob("input_data.parquet"), None) is not None
+        ]
 
     logger.info("STEP[add_uzg] Start | units={} | CRS={}", units, target_crs)
     outputs: list[Path] = []
