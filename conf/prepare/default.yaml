@@ -63,4 +63,8 @@ clean_dataset:
   apply:
     lowercase: true              # zamień nazwy kolumn na lower
     crs_target: "EPSG:2180"      # null → pierwszy napotkany CRS staje się referencyjny
-    drop_columns: ["G5NOS", "G5WRT", "G5DWR", "G5PEW", "G5RZN", "G5DWW", "G5DTW", "G5DTU", "ID", "IDR", "ST_OBJ", "G5IDR", "G5DZP"]  # jeśli chcesz bezpiecznie zrzucić nadmiarowe kolumny
+    # startObiekt/koniecObiekt/startWersjaObiekt/koniecWersjaObiekt to daty cyklu życia obiektu GML,
+    # nie cechy. Ich format bywa niespójny między latami (2024 GML: "2021.03.08" z kropkami zamiast
+    # timestampu), przez co INSERT do DuckDB wywala się ConversionException i gubi dane danego roku.
+    # Zrzucamy je — i tak nie są używane dalej (cechy: geometry + iddzialki + year).
+    drop_columns: ["G5NOS", "G5WRT", "G5DWR", "G5PEW", "G5RZN", "G5DWW", "G5DTW", "G5DTU", "ID", "IDR", "ST_OBJ", "G5IDR", "G5DZP", "startObiekt", "koniecObiekt", "startWersjaObiekt", "koniecWersjaObiekt"]  # jeśli chcesz bezpiecznie zrzucić nadmiarowe kolumny

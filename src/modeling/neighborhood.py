@@ -15,7 +15,6 @@ from omegaconf import OmegaConf
 
 from src.common.config_utils import sel as _sel
 from src.common.duckdb_utils import connect_duckdb as _connect_spatial
-from src.common.duckdb_utils import write_geoparquet
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DuckDB I/O helpers
@@ -1167,8 +1166,6 @@ def run_compute_neighbor_aggregates(cfg) -> None:
         clean_df_with_y = clean_df
 
     out_table = _sel(cfg, "dataset.calculate_neighborhood.out_table", None)
-
-    write_geoparquet(clean_df_with_y, Path("cleaned_labels.parquet"))
 
     if len(clean_df) == 0:
         logger.warning("Brak wierszy do zapisu. Zapis pominięty.")

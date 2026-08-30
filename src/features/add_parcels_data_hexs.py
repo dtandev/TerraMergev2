@@ -5,7 +5,6 @@ from pathlib import Path
 
 import duckdb
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 from loguru import logger
 from omegaconf import DictConfig
@@ -58,13 +57,26 @@ def load_parcels_joined_2180(
     id_col, year_col = join_keys
     con = _connect_spatial(db_path)
 
+    # Passthrough columns from the parcels table: keep only real attributes, never de.*. EGiB GML
+    # exports carry dozens of housekeeping columns (description_*, identifier_*, jrg2_*, *_pkid,
+    # ogc_fid, *_xml) that DuckDB types as INTEGER; with de.* they'd all pass the numeric-dtype
+    # filter downstream and become junk hex "features". They also differ across GDB/GML/SHP
+    # sources, so the aggregated hex schema wouldn't be reproducible year-to-year. Keep only the
+    # id, year, the parsed unit/obręb, and poleewidencyjne (registered area); geometry is fetched
+    # separately as WKB. The geometric features (gf_*) come from the join and are the real feature
+    # set. add poleewidencyjne here if a downstream step needs the registered area.
+    de_cols = _duckdb_columns(con, parcels_table)
+    passthrough_wanted = [id_col, year_col, "jednostka", "obreb", "poleewidencyjne"]
+    de_keep = [c for c in passthrough_wanted if c in de_cols]
+    de_select = ", ".join(f'de."{c}"' for c in de_keep)
+
     # Build a safe SELECT that prefixes GF columns to avoid duplicates.
     gf_cols = [c for c in _duckdb_columns(con, gf_table) if c not in {id_col, year_col}]
     gf_select = ", ".join([f'gf."{c}" AS "gf_{c}"' for c in gf_cols]) if gf_cols else ""
 
     q = f"""
         SELECT
-            de.*,
+            {de_select},
             ST_AsWKB(de.{geom_col}) AS geom_wkb_2180
             {"," if gf_select else ""}
             {gf_select}
@@ -201,11 +213,14 @@ def intersect_aggregate_hex_parcels(
 
     # === wybór cech numerycznych ===
     if include_features is None:
+        # pd.api.types.is_numeric_dtype handles pandas nullable extension dtypes (Int32Dtype,
+        # Int64Dtype, Float64Dtype) that DuckDB reads produce; np.issubdtype/np.dtype raise
+        # TypeError on those (e.g. ogc_fid as Int32Dtype).
         include_features = [
             c
             for c in gdf_parcels.columns
-            if c not in {gdf_parcels.geometry.name, year_col, parcel_id_col}
-            and np.issubdtype(gdf_parcels[c].dtype, np.number)
+            if c not in {gdf_parcels.geometry.name, year_col, parcel_id_col, "ogc_fid"}
+            and pd.api.types.is_numeric_dtype(gdf_parcels[c])
         ]
     else:
         include_features = [c for c in include_features if c in parcels_cols]

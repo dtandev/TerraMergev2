@@ -9,8 +9,13 @@ labels_for_parcels:
   table: "hex.DzialkaEwidencyjna_${dataset.resolution}"
   out_table: "labels.ParcelLabels_${dataset.resolution}"
   parcels_split_col_name: 'n_parcel'
+  # gf_area_ha_mean: geometry-derived mean parcel area [ha], aggregated from egib.GeometricFeatures.
+  # Always present and consistent across GDB/GML/SHP sources (unlike the old Esri "shape_area_mean",
+  # which only exists in GDB years). eps_abs is therefore in HECTARES: 0.01 ha == 100 m² (the prior
+  # threshold). A split is flagged when the hex mean parcel area drops by more than eps_abs ha.
+  mean_area_col: "gf_area_ha_mean"
   area_conservation_tol: 0.005
-  eps_abs: 100.0
+  eps_abs: 0.01
   extra_horizon: 5
 
 labels_for_uzg:
