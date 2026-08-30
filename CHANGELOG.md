@@ -8,6 +8,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.2.7 (2026-08-30)
+
+### Fix
+
+- **uzg**: skip stray empty unit dirs when listing obrębs
+- **uzg**: treat blank strings as missing when coalescing land-use variants
+
 ## v0.2.6 (2026-08-30)
 
 ### Fix
