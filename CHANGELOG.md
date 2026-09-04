@@ -8,6 +8,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.3.0 (2026-09-04)
+
+### Feat
+
+- **mpzp**: enable zoning features via portable symbol-based label mapping (#12)
+
 ## v0.2.7 (2026-08-30)
 
 ### Fix

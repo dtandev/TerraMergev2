@@ -1,6 +1,6 @@
 [project]
 name = "terramerge"
-version = "0.2.7"
+version = "0.3.0"
 description = "Geospatial pipeline merging Polish cadastral (EGIB) layers, engineering parcel features, and training a LightGBM model to predict future parcel/land-use changes"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"  # h3==3.7.7 (see h3<4.0 below) has no prebuilt wheels past 3.12
