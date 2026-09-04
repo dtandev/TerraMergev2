@@ -73,7 +73,7 @@ add_transactions_data:
     extra_nonzero_mean_cols: ["tx_cena"]     # dodaj też tx_cena_mean_nz
 
 add_mpzp_data:
-  enabled: false
+  enabled: true
   table: egib.MPZP
   out_table: hex.mpzp_${pipeline.resolution}
   klasy_mpzp: ['M','K','Z','U','I','P','L','W','C','R','IK','T','Brak']

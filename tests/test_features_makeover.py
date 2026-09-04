@@ -74,12 +74,39 @@ class TestSanitizeMpzpSource:
             FeaturesMakeover._sanitize_mpzp_source(pd.DataFrame({"x": [1]}))
 
 
+class TestNormalizeMpzpSymbol:
+    def test_strips_plan_local_numbering_to_base_symbol(self):
+        n = FeaturesMakeover._normalize_mpzp_symbol
+        # leading plan/sheet prefix is dropped only when a symbol follows it
+        assert n("10MN") == "MN"
+        assert n("A102MN") == "MN"
+        assert n("1-KDW") == "KDW"
+        assert n("IV/ZL") == "ZL"
+        # trailing variant number is dropped, but the symbol itself is kept (not eaten)
+        assert n("ML1") == "ML"
+        assert n("D3") == "D"
+        assert n("MU4") == "MU"
+        # road width codes and spaces collapse
+        assert n("KD10/1X5/") == "KD"
+        assert n("KD 10") == "KD"
+        # clean symbols are unchanged (idempotent)
+        assert n("R") == "R"
+        assert n("MN-U") == "MN-U"
+
+
 class TestAddMpzpLabelSimple:
     def test_maps_to_group_with_placeholder_fallback(self):
         df = pd.DataFrame({"etykieta": ["MN", "ZZZ"]})
         mapping = pd.DataFrame({"etykieta_oryginalna": ["MN"], "grupa_glowna": ["mieszkaniowa"]})
         out = FeaturesMakeover._add_mpzp_label_simple(df, mapping, placeholder="Brak")
         assert out["mpzp_etykieta"].tolist() == ["mieszkaniowa", "Brak"]
+
+    def test_plan_local_labels_map_through_normalization(self):
+        # A mapping keyed on the base symbol matches plan-local variants from any plan.
+        df = pd.DataFrame({"etykieta": ["10MN", "A102MN", "5R", "ZZZ"]})
+        mapping = pd.DataFrame({"etykieta_oryginalna": ["MN", "R"], "grupa_glowna": ["M", "R"]})
+        out = FeaturesMakeover._add_mpzp_label_simple(df, mapping, placeholder="Brak")
+        assert out["mpzp_etykieta"].tolist() == ["M", "M", "R", "Brak"]
 
 
 class TestApplyMpzpTemporalRule:

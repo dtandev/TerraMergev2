@@ -31,13 +31,14 @@ labels_for_uzg:
 
 calculate_neighborhood:
   enabled: true
-  # Core hex tables that are always built. MPZP/Transakcje are optional (external data: WFS /
-  # transactions parquet) and their pipeline steps are disabled by default, so listing their
-  # tables here made the merge fail with "table does not exist". Add them back only when their
-  # add_*_data steps are enabled and the tables exist.
+  # Core hex tables that are always built. Transakcje is still optional (external transactions
+  # parquet, step disabled), so its table stays out until that step is enabled — listing a table
+  # whose step is off makes the merge fail with "table does not exist". MPZP is now enabled
+  # (WFS + symbol mapping), so hex.mpzp is included.
   tables_to_split:
     - "hex.DzialkaEwidencyjna_${dataset.resolution}"
     - "hex.kug_${dataset.resolution}"
+    - "hex.mpzp_${dataset.resolution}"
   proxy_cols: ["split_proxy"]
   keys: ["hex_id","year"]
   table_with_labels: "labels.ParcelLabels_${dataset.resolution}" # "labels.kugLabels_${dataset.resolution}_sum_agri", "labels.kugLabels_${dataset.resolution}_uzg_R_share"
