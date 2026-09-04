@@ -8,6 +8,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.4.0 (2026-09-04)
+
+### Feat
+
+- **transactions**: enable RCN transaction-price features (#13)
+
 ## v0.3.0 (2026-09-04)
 
 ### Feat

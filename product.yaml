@@ -10,7 +10,7 @@
 # --- Identity ---
 name: "TerraMerge"                                   # TODO: verify this — repo is "TerraMergev2"; confirm final product name
 description: "Geospatial data pipeline that merges Polish cadastral (EGIB) layers, engineers parcel-level features, and trains a LightGBM model to predict future parcel/land-use changes"  # TODO: verify this
-version: "0.3.0"
+version: "0.4.0"
 author: "Darek"                                      # TODO: verify this — inferred from git log (dtandev@gmail.com)
 category: "geospatial-ml"                            # TODO: verify this — cadastral data processing + predictive modeling; no closer match in the example list (vegetation | hydrology | geology | classification)
 
