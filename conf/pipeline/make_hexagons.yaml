@@ -58,7 +58,7 @@ add_parcels_data:
 # Transakcje → dołączenie po iddzialki + roku
 
 add_transactions_data:
-  enabled: false
+  enabled: true
   out_table: hex.Transakcje_${pipeline.resolution}
   join_with: egib.Transakcje
   join_columns: ["iddzialki","year"]
