@@ -218,6 +218,12 @@ __marimo__/
 logs/
 artifacts/logs/
 
+# RCN transaction data (large, external — ~1.2 GB of gpkg/xlsx per woj.) and the parquet
+# derived from it. Environment-specific; the pipeline reads artifacts/parquet/transakcje.parquet
+# built from these — keep both out of git.
+artifacts/transactions/
+artifacts/parquet/
+
 # audit output (generated, not committed)
 AUDIT.md
 SCAFFOLD_TODO.md

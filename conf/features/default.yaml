@@ -4,7 +4,7 @@ enabled: false
 crs_target: "EPSG:2180"
 
 add_transaction_prices:
-  enabled: false
+  enabled: true
   id_column: "iddzialki"
   date_column: "Data"
   write_mode: "replace"

@@ -31,14 +31,15 @@ labels_for_uzg:
 
 calculate_neighborhood:
   enabled: true
-  # Core hex tables that are always built. Transakcje is still optional (external transactions
-  # parquet, step disabled), so its table stays out until that step is enabled — listing a table
-  # whose step is off makes the merge fail with "table does not exist". MPZP is now enabled
-  # (WFS + symbol mapping), so hex.mpzp is included.
+  # Core hex tables merged into the neighborhood dataset. All the feeding add_*_data steps are
+  # enabled, so every table here exists: parcels, land-use (kug), zoning (mpzp), and RCN
+  # transaction prices (Transakcje). Drop a table here only if its add_*_data step is turned off,
+  # otherwise the merge fails with "table does not exist".
   tables_to_split:
     - "hex.DzialkaEwidencyjna_${dataset.resolution}"
     - "hex.kug_${dataset.resolution}"
     - "hex.mpzp_${dataset.resolution}"
+    - "hex.Transakcje_${dataset.resolution}"
   proxy_cols: ["split_proxy"]
   keys: ["hex_id","year"]
   table_with_labels: "labels.ParcelLabels_${dataset.resolution}" # "labels.kugLabels_${dataset.resolution}_sum_agri", "labels.kugLabels_${dataset.resolution}_uzg_R_share"
