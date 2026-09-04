@@ -20,7 +20,7 @@ add_uzg:
   write_duckdb: true   # jeśli chcesz od razu CREATE TABLE w DuckDB
 
 add_mpzp:
-  enabled: false
+  enabled: true
   source_layer: "DzialkaEwidencyjna"   # skąd bierzemy obręby (jak było)
   for_parcels: true  # jeśli True, oznaczenie w planie przypisane do działki; jeśli False, ogólny plan niezależnie od działek
   derive_features: true # czy tworzyć cechy pomocnicze (rok planu, czy plan jest aktualny)

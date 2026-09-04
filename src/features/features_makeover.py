@@ -108,7 +108,34 @@ class FeaturesMakeover:
         out[col] = ser
         return out
 
-    # ─────────── 2) Mapowanie do grupy głównej ───────────
+    # ─────────── 2) Normalizacja etykiety planu do symbolu bazowego ───────────
+    @staticmethod
+    def _normalize_mpzp_symbol(value: object) -> str:
+        """Sprowadź etykietę MPZP do symbolu bazowego wspólnego dla różnych planów.
+
+        Etykieta z WFS niesie numerację LOKALNĄ dla planu ("10MN", "A102MN", "1-KDW",
+        "IV/R"), często z kodem szerokości drogi ("KD10/1X5/", "D12(1X6)"). Ten numer to
+        indeks wielokąta w konkretnym planie — nie przenosi się między powiatami, więc
+        dopasowanie po pełnej etykiecie daje nikłe pokrycie. Zdejmujemy prefiks/sufiks
+        planowy i zostawiamy sam symbol przeznaczenia (MN, R, ZL, KDW, ...), który jest
+        standardowy i mapuje się jednakowo wszędzie.
+        """
+        s = "" if value is None else str(value)
+        s = s.strip().upper().replace(",", "_")
+        if not s:
+            return ""
+        s = re.sub(r"/[^/]*/", "", s)  # kod szerokości drogi: KD10/1X5/
+        s = re.sub(r"\([^)]*\)", "", s)  # wariant w nawiasie: (1X5)
+        s = re.sub(r"\s+", "", s)  # scal spacje: "KD 10" → "KD10"
+        s = re.sub(r"^[IVX]+/", "", s)  # rzymski prefiks planu: IV/
+        # Plan-lokalny prefiks (numer arkusza/wielokąta): A102MN, 10MN, 1-KDW. Zdejmujemy TYLKO
+        # gdy po numerze idzie litera — inaczej "ML1"/"D3" (symbol + numer wariantu) zostałyby
+        # zjedzone do pustego. Numer-wariant na końcu (MU4 → MU) zdejmuje osobna reguła niżej.
+        s = re.sub(r"^[A-Z]{0,2}\d+[-_.\s]?(?=[A-Z])", "", s)
+        s = re.sub(r"\d+$", "", s)  # końcowy numer wariantu: MU4 → MU, ML1 → ML
+        return s.strip("-_. ")
+
+    # ─────────── 3) Mapowanie do grupy głównej ───────────
     @staticmethod
     def _add_mpzp_label_simple(
         df: pd.DataFrame,
@@ -120,20 +147,22 @@ class FeaturesMakeover:
         mapping_group_col: str = "grupa_glowna",
         placeholder: str = "Brak",
     ) -> pd.DataFrame:
-        """Proste: wyczyść etykietę → zmapuj do grupy → (opcjonalnie) reguła czasowa."""
+        """Znormalizuj etykietę do symbolu → zmapuj do grupy → (opcjonalnie) reguła czasowa.
+
+        Zarówno źródłowa etykieta, jak i klucze mapowania przechodzą przez
+        `_normalize_mpzp_symbol`, więc mapowanie zbudowane na jednym powiecie działa na
+        innych, a plik mapujący może trzymać albo pełne etykiety, albo już same symbole.
+        """
         out = df.copy()
 
-        # 1) wyczyść źródło (przecinki, spacje, NaN)
-        ser = (
-            out[src_col]
-            .astype("string")
-            .str.replace(",", "_", regex=False)
-            .str.strip()
-            .fillna(placeholder)
-        )
+        # 1) etykieta źródłowa → symbol bazowy (NaN → placeholder)
+        ser = out[src_col].map(FeaturesMakeover._normalize_mpzp_symbol)
+        ser = ser.mask(ser.eq(""), placeholder)
 
-        # 2) zbuduj mapowanie: etykieta_oryginalna -> grupa_glowna
-        mapping = mapping_df.drop_duplicates(mapping_orig_col).set_index(mapping_orig_col)[
+        # 2) mapowanie: symbol(etykieta_oryginalna) -> grupa_glowna (klucze też normalizowane)
+        mp = mapping_df.copy()
+        mp[mapping_orig_col] = mp[mapping_orig_col].map(FeaturesMakeover._normalize_mpzp_symbol)
+        mapping = mp.drop_duplicates(mapping_orig_col).set_index(mapping_orig_col)[
             mapping_group_col
         ]
 
