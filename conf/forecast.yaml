@@ -1,0 +1,46 @@
+# Konfiguracja treningu modeli prognozy przekształceń gruntów (podział / odrolnienie)
+# per horyzont +1/+2/+3 lata. Czytane przez scripts/train_forecast.py.
+
+dataset_table: 'dataset.Parcels_neighborhood_r8'
+
+# Zadanie: "split" (podział) albo "odrol" (odrolnienie R→B).
+# Każde zadanie ma etykiety y_next / y_next_2 / y_next_3 w swojej tabeli.
+task: split
+label_tables:
+  split: 'labels.ParcelLabels_r8'
+  odrol: 'labels.kugLabels_r8_uzg_R_share'
+
+horizons: [1, 2, 3]
+
+# Okno ewaluacji dla horyzontu 1; dla dłuższych cofa się o 1 rok na krok
+# (dłuższa etykieta wymaga, by przyszły rok istniał).
+eval:
+  base_train_max: 2022   # h1: train<=2022, valid 2023, test 2024
+
+# Kolumny etykiet do usunięcia z cech (żeby nie było wycieku między horyzontami/zadaniami).
+label_prefixes: ['y_next', 'convert_proxy_lbl']
+
+lgbm:
+  objective: binary
+  n_estimators: 3000
+  learning_rate: 0.03
+  subsample: 0.8
+  subsample_freq: 1
+  reg_lambda: 1.0
+  random_state: 42
+  n_jobs: -1
+  verbosity: -1
+
+# Przeszukiwanie hiperparametrów (coordinate descent po kolejności).
+tune_grid:
+  num_leaves: [15, 31, 63]
+  max_depth: [-1, 4, 6]
+  min_child_samples: [50, 100, 200]
+
+perm_importance:
+  n_repeats: 8
+
+output:
+  models_dir: 'artifacts/models/forecast'
+  metrics_json: 'artifacts/reports/forecast_metrics.json'
+  forecast_csv: 'artifacts/reports/forecast_predictions.csv'
