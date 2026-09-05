@@ -19,13 +19,14 @@ dependencies = [
     "numpy",
     "omegaconf",
     "pandas<3",              # pandas 3.0.5 segfaults constructing GeoDataFrames in this environment
-                             # (pyarrow-backed string array crash) — pinned to the stable 2.x line
+    # (pyarrow-backed string array crash) — pinned to the stable 2.x line
     "psutil",
     "pyarrow",
     "python-dotenv",
     "shapely",
     "scikit-learn",
     "tqdm",
+    "openpyxl>=3.1.5",
 ]
 
 [project.optional-dependencies]

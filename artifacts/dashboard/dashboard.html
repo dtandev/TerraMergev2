@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zmiany struktury agrarnej — powiat szczycieński</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<style>
+  :root{
+    --paper:#eef2ee; --surface:#fff; --ink:#1b211d; --muted:#586159; --hair:#d6ddd6;
+    --accent:#2e6b5e; --agri:#5a8c4e; --built:#b26240; --warn:#b8862e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif; line-height:1.55;}
+  .wrap{max-width:1040px; margin:0 auto; padding:2rem 1.2rem 4rem;}
+  header{border-bottom:2px solid var(--ink); padding-bottom:1rem; margin-bottom:1.6rem;}
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 .5rem;}
+  h1{font-family:"IBM Plex Serif",serif; font-size:1.9rem; margin:0;}
+  .sub{color:var(--muted); margin:.4rem 0 0; max-width:64ch;}
+  .controls{display:flex; flex-wrap:wrap; gap:.8rem; align-items:center; margin:1.2rem 0;
+    font-size:.9rem;}
+  .controls label{color:var(--muted);}
+  select,input[type=file]{font-family:"IBM Plex Mono",monospace; font-size:.85rem;
+    padding:.35rem .5rem; border:1px solid var(--hair); border-radius:7px; background:var(--surface); color:var(--ink);}
+  .status{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--muted);
+    background:var(--surface); border:1px solid var(--hair); border-radius:8px; padding:.6rem .8rem; margin:.8rem 0;}
+  .status.err{color:var(--warn); border-color:var(--warn);}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:1.2rem;}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface); border:1px solid var(--hair); border-radius:12px; padding:1rem 1rem .6rem;}
+  .card h2{font-family:"IBM Plex Serif",serif; font-size:1.05rem; margin:.1rem 0 .3rem;}
+  .card p{font-size:.82rem; color:var(--muted); margin:0 0 .4rem;}
+  .plot{width:100%; height:300px;}
+  .full{grid-column:1 / -1;}
+  footer{margin-top:2rem; font-family:"IBM Plex Mono",monospace; font-size:.76rem; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="eyebrow">EGiB 2013–2026 · siatka H3 r8 · zmiany rok-do-roku</p>
+  <h1>Zmiany struktury agrarnej — powiat szczycieński</h1>
+  <p class="sub">Interaktywne zestawienia porównawcze r/r. Dane wczytywane z zewnętrznego pliku <span style="font-family:IBM Plex Mono,monospace">yoy_powiat.csv</span> (generowanego przez <span style="font-family:IBM Plex Mono,monospace">scripts/yoy_changes.py</span>).</p>
+</header>
+
+<div class="controls">
+  <label>Źródło danych:</label>
+  <input type="file" id="file" accept=".csv">
+  <span style="color:var(--muted)">albo serwuj katalog: <code>python -m http.server</code> i odśwież</span>
+</div>
+<div id="status" class="status">Wczytywanie <code>../reports/yoy_powiat.csv</code>…</div>
+
+<div class="grid">
+  <div class="card"><h2>Liczba działek ewidencyjnych</h2><p>Wzrost rozdrobnienia: przyrost r/r</p><div id="p_dzialki" class="plot"></div></div>
+  <div class="card"><h2>Udział użytków R vs B</h2><p>Odrolnienie = spadek R, wzrost B</p><div id="p_rb" class="plot"></div></div>
+  <div class="card full"><h2>Aktywność przekształceń r/r</h2><p>Liczba heksów z podziałem i z odrolnieniem w danym roku</p><div id="p_events" class="plot"></div></div>
+</div>
+
+<footer>Powiat szczycieński · dane: artifacts/reports/yoy_powiat.csv · wykresy: Plotly · v0.4.0</footer>
+</div>
+
+<script>
+const C = {ink:"#1b211d", muted:"#586159", hair:"#d6ddd6", accent:"#2e6b5e", agri:"#5a8c4e", built:"#b26240", warn:"#b8862e", paper:"#eef2ee"};
+const LAYOUT = {
+  paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+  font:{family:"IBM Plex Sans, sans-serif", color:C.ink, size:12},
+  margin:{l:52,r:16,t:10,b:40}, showlegend:true,
+  legend:{orientation:"h", y:1.12, font:{size:11}},
+  xaxis:{gridcolor:C.hair, tickfont:{family:"IBM Plex Mono"}},
+  yaxis:{gridcolor:C.hair, tickfont:{family:"IBM Plex Mono"}},
+};
+const CFG = {displayModeBar:false, responsive:true};
+
+function parseCSV(text){
+  const [head, ...lines] = text.trim().split(/\r?\n/);
+  const cols = head.split(",");
+  return lines.map(l => {
+    const v = l.split(",");
+    const o = {};
+    cols.forEach((c,i)=> o[c] = v[i]==="" ? null : (isNaN(+v[i]) ? v[i] : +v[i]));
+    return o;
+  });
+}
+
+function render(rows){
+  const yr = rows.map(r=>r.rok);
+  Plotly.newPlot("p_dzialki", [
+    {x:yr, y:rows.map(r=>r.liczba_dzialek), type:"scatter", mode:"lines+markers", name:"liczba działek",
+     line:{color:C.accent, width:2.5}, marker:{size:5}},
+    {x:yr, y:rows.map(r=>r.przyrost_dzialek), type:"bar", name:"przyrost r/r", marker:{color:C.agri, opacity:.45}, yaxis:"y2"},
+  ], Object.assign({}, LAYOUT, {yaxis2:{overlaying:"y", side:"right", gridcolor:"transparent", tickfont:{family:"IBM Plex Mono"}}}), CFG);
+
+  Plotly.newPlot("p_rb", [
+    {x:yr, y:rows.map(r=>r.udzial_R), type:"scatter", mode:"lines+markers", name:"udział R (rolne)", line:{color:C.agri, width:2.5}},
+    {x:yr, y:rows.map(r=>r.udzial_B), type:"scatter", mode:"lines+markers", name:"udział B (zabudowa)", line:{color:C.built, width:2.5}},
+  ], LAYOUT, CFG);
+
+  Plotly.newPlot("p_events", [
+    {x:yr, y:rows.map(r=>r.heksy_z_podzialem), type:"bar", name:"podziały", marker:{color:C.accent}},
+    {x:yr, y:rows.map(r=>r.heksy_z_odrolnieniem), type:"bar", name:"odrolnienia", marker:{color:C.built}},
+  ], Object.assign({}, LAYOUT, {barmode:"group", height:320}), CFG);
+}
+
+function setStatus(msg, err){
+  const s = document.getElementById("status");
+  s.innerHTML = msg; s.className = "status" + (err ? " err" : "");
+}
+
+function load(rows, src){
+  if(!rows.length){ setStatus("Plik pusty lub zły format.", true); return; }
+  render(rows);
+  setStatus(`Wczytano <b>${rows.length}</b> lat z: ${src}. Wykresy interaktywne (najedź, przybliż).`);
+}
+
+document.getElementById("file").addEventListener("change", e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=> load(parseCSV(rd.result), f.name);
+  rd.readAsText(f);
+});
+
+fetch("../reports/yoy_powiat.csv")
+  .then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); })
+  .then(t=> load(parseCSV(t), "../reports/yoy_powiat.csv"))
+  .catch(()=> setStatus("Nie udało się wczytać automatycznie (przeglądarka blokuje odczyt lokalnego pliku). "
+    + "Wskaż plik <b>yoy_powiat.csv</b> powyżej, albo uruchom <code>python -m http.server</code> w katalogu repo i otwórz stronę przez http://localhost:8000/artifacts/dashboard/dashboard.html", true));
+</script>
+</body>
+</html>
