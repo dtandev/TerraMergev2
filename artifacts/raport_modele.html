@@ -1,0 +1,316 @@
+<title>Modele przekształceń gruntów</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#eef2ee; --surface:#f8faf7; --surface-2:#ffffff;
+    --ink:#1b211d; --muted:#586159; --faint:#8a938a;
+    --hair:#d6ddd6; --hair-strong:#c2ccc2;
+    --accent:#2e6b5e;            /* cadastral teal-green — structural */
+    --agri:#5a8c4e;              /* R — grunty rolne */
+    --built:#b26240;            /* B — zabudowa */
+    --warn:#b8862e;
+    --bar-track:#e2e8e1;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#131714; --surface:#1a1f1b; --surface-2:#20261f;
+      --ink:#e7ede6; --muted:#9aa79c; --faint:#6c766d;
+      --hair:#2b322c; --hair-strong:#3a423b;
+      --accent:#5fb3a1; --agri:#7fb06f; --built:#d68a63; --warn:#d8a94a;
+      --bar-track:#252c25; color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#131714; --surface:#1a1f1b; --surface-2:#20261f;
+    --ink:#e7ede6; --muted:#9aa79c; --faint:#6c766d;
+    --hair:#2b322c; --hair-strong:#3a423b;
+    --accent:#5fb3a1; --agri:#7fb06f; --built:#d68a63; --warn:#d8a94a;
+    --bar-track:#252c25; color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif; line-height:1.62;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:820px; margin:0 auto; padding:clamp(1.4rem,4vw,3.5rem) clamp(1.1rem,4vw,2rem) 5rem;}
+  h1,h2,h3{font-family:"IBM Plex Serif",Georgia,serif; font-weight:600; text-wrap:balance; line-height:1.2;}
+  p{max-width:66ch;} .lead{max-width:64ch;}
+  a{color:var(--accent); text-underline-offset:2px;}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+
+  /* header */
+  header{border-bottom:2px solid var(--ink); padding-bottom:1.4rem; margin-bottom:2.4rem;}
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 .9rem;}
+  h1{font-size:clamp(2rem,5vw,2.9rem); margin:0 0 .6rem;}
+  .sub{font-size:1.06rem; color:var(--muted); max-width:60ch; margin:0;}
+  .meta{display:flex; flex-wrap:wrap; gap:.5rem 1.4rem; margin-top:1.3rem;
+    font-family:"IBM Plex Mono",monospace; font-size:.78rem; color:var(--muted);}
+  .meta b{color:var(--ink); font-weight:500;}
+
+  section{margin-top:3rem;}
+  h2{font-size:1.5rem; margin:0 0 .3rem; display:flex; align-items:baseline; gap:.6rem;}
+  h2 .n{font-family:"IBM Plex Mono",monospace; font-size:.85rem; color:var(--accent); font-weight:500;}
+  h2 + .note{color:var(--muted); margin:.1rem 0 1.3rem; font-size:.95rem;}
+  h3{font-size:1.06rem; margin:1.8rem 0 .5rem;}
+  .stack{display:flex; flex-direction:column; gap:1rem;}
+
+  /* key-figure row */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px;
+    background:var(--hair); border:1px solid var(--hair); border-radius:10px; overflow:hidden; margin:1.4rem 0;}
+  .kpi{background:var(--surface); padding:1rem 1.1rem;}
+  .kpi .v{font-family:"IBM Plex Mono",monospace; font-size:1.7rem; font-weight:500; line-height:1;}
+  .kpi .k{font-size:.8rem; color:var(--muted); margin-top:.4rem;}
+  .kpi.built .v{color:var(--built)} .kpi.agri .v{color:var(--agri)}
+
+  /* tables */
+  .tbl-wrap{overflow-x:auto; margin:1.2rem 0; border:1px solid var(--hair); border-radius:10px;}
+  table{border-collapse:collapse; width:100%; font-size:.92rem;}
+  th,td{padding:.62rem .85rem; text-align:left; border-bottom:1px solid var(--hair);}
+  thead th{background:var(--surface-2); font-family:"IBM Plex Mono",monospace; font-weight:500;
+    font-size:.74rem; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);}
+  tbody tr:last-child td{border-bottom:none;}
+  td.num, th.num{text-align:right; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+  tr.best td{background:color-mix(in srgb,var(--accent) 8%,var(--surface));}
+  tr.best td:first-child{box-shadow:inset 3px 0 0 var(--accent);}
+  .rowlab{font-weight:500;} .dim{color:var(--muted);}
+
+  /* bar charts */
+  .chart{margin:1.1rem 0 .4rem;}
+  .bar-row{display:grid; grid-template-columns:minmax(96px,150px) 1fr auto; align-items:center;
+    gap:.7rem; padding:.28rem 0;}
+  .bar-row .lab{font-size:.86rem;} .bar-row .lab .s{display:block; color:var(--faint); font-size:.72rem;}
+  .track{background:var(--bar-track); border-radius:5px; height:15px; overflow:hidden;}
+  .fill{height:100%; border-radius:5px 3px 3px 5px;}
+  .bar-row .val{font-family:"IBM Plex Mono",monospace; font-size:.82rem; font-variant-numeric:tabular-nums; color:var(--muted);}
+  .fill.a{background:var(--accent)} .fill.g{background:var(--agri)} .fill.b{background:var(--built)}
+  .fill.d{background:var(--hair-strong)} .fill.w{background:var(--warn)}
+
+  .split-cols{display:grid; grid-template-columns:1fr 1fr; gap:1.6rem 2rem;}
+  @media(max-width:640px){.split-cols{grid-template-columns:1fr}}
+  .panel{background:var(--surface); border:1px solid var(--hair); border-radius:10px; padding:1.2rem 1.25rem;}
+  .panel h3{margin-top:0;}
+  .tag{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.03em;
+    padding:.12rem .5rem; border-radius:999px; border:1px solid var(--hair-strong); color:var(--muted);}
+  .tag.split{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--hair))}
+  .tag.odrol{color:var(--built); border-color:color-mix(in srgb,var(--built) 40%,var(--hair))}
+
+  /* definition list for metrics */
+  .defs{display:flex; flex-direction:column; gap:1rem; margin-top:1rem;}
+  .def{display:grid; grid-template-columns:minmax(120px,150px) 1fr; gap:.4rem 1.2rem;
+    padding-bottom:1rem; border-bottom:1px solid var(--hair);}
+  .def:last-child{border-bottom:none;}
+  .def dt{font-family:"IBM Plex Mono",monospace; font-weight:500; color:var(--accent); font-size:.9rem;}
+  .def dd{margin:0; color:var(--ink);} .def dd small{color:var(--muted); display:block; margin-top:.25rem;}
+
+  .callout{border-left:3px solid var(--warn); background:color-mix(in srgb,var(--warn) 8%,var(--surface));
+    padding:.9rem 1.1rem; border-radius:0 8px 8px 0; margin:1.3rem 0;}
+  .callout p{margin:.2rem 0; max-width:none;}
+  ul.clean{padding-left:1.1rem;} ul.clean li{margin:.45rem 0; max-width:64ch;}
+  footer{margin-top:3.5rem; padding-top:1.3rem; border-top:1px solid var(--hair);
+    font-size:.8rem; color:var(--muted); font-family:"IBM Plex Mono",monospace;}
+  .swatch{display:inline-block; width:.7em; height:.7em; border-radius:2px; vertical-align:baseline; margin-right:.15em;}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Powiat szczycieński · siatka H3 r8 · EGiB 2013–2026</p>
+  <h1>Modele przekształceń gruntów</h1>
+  <p class="sub">Prognoza prawdopodobieństwa <b>odrolnienia (R→B)</b> i <b>podziału nieruchomości</b> w heksie, na cechach wyprowadzonych z ewidencji gruntów i budynków.</p>
+  <div class="meta">
+    <span><b>2 zadania</b> · klasyfikacja binarna</span>
+    <span><b>2 modele</b> · LightGBM + regresja logistyczna</span>
+    <span><b>~565</b> cech · 5 rodzin</span>
+    <span>walidacja: <b>2023</b> · kontrola: <b>2024</b></span>
+  </div>
+</header>
+
+<section id="cel">
+  <h2><span class="n">01</span> Zadanie i dane</h2>
+  <p class="note">Jednostką odniesienia jest heksagon H3 rozdz. 8 (~0,7 km²). Dla każdej pary (heks, rok) przewidujemy, czy w roku następnym dojdzie do procesu.</p>
+  <div class="split-cols">
+    <div class="panel">
+      <span class="tag odrol">odrolnienie R→B</span>
+      <h3 style="margin-top:.7rem">Konwersja rolne → zabudowa</h3>
+      <p style="font-size:.94rem">Etykieta dodatnia, gdy r/r udział użytków <span class="mono">R</span> spada, udział <span class="mono">B</span> rośnie, a suma powierzchni jest stabilna (±1%). Wątek przewodni: strefa wpływu lotniska w Szymanach.</p>
+    </div>
+    <div class="panel">
+      <span class="tag split">podział nieruchomości</span>
+      <h3 style="margin-top:.7rem">Rozdrobnienie działek</h3>
+      <p style="font-size:.94rem">Etykieta dodatnia, gdy średnia powierzchnia działki w heksie spada przy zachowanej sumie i rosnącej liczbie działek — proxy podziału ewidencyjnego.</p>
+    </div>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="v mono">38 181</div><div class="k">wierszy (heks × rok)</div></div>
+    <div class="kpi odrol"><div class="v mono" style="color:var(--built)">1 477</div><div class="k">zdarzeń odrolnienia</div></div>
+    <div class="kpi"><div class="v mono">1 626</div><div class="k">zdarzeń podziału</div></div>
+    <div class="kpi"><div class="v mono">6,5%</div><div class="k">bazowa częstość (odrol.)</div></div>
+  </div>
+  <p style="font-size:.9rem" class="dim">Podział czasowy: trening ≤ 2022, strojenie na 2023, kontrola na wydzielonym 2024. Rok 2025 dodano do bazy (wcześniej brakujący), co odblokowało etykiety 2024. Waga klas wyrównana (<span class="mono">scale_pos_weight</span>).</p>
+</section>
+
+<section id="wyniki">
+  <h2><span class="n">02</span> Wyniki modeli</h2>
+  <p class="note">Miara wiodąca to <b>AP</b> (średnia precyzja) — właściwa przy silnym niezbalansowaniu klas. Punkt odniesienia: model losowy (= częstość) i „persistence" (przepisz stan z zeszłego roku).</p>
+
+  <div class="split-cols" style="margin-top:1.4rem">
+    <div>
+      <h3><span class="swatch" style="background:var(--built)"></span>Odrolnienie — AP na walidacji 2023</h3>
+      <div class="chart">
+        <div class="bar-row"><div class="lab">losowy<span class="s">częstość klasy</span></div><div class="track"><div class="fill d" style="width:13%"></div></div><div class="val">0,065</div></div>
+        <div class="bar-row"><div class="lab">persistence<span class="s">stan z zeszłego roku</span></div><div class="track"><div class="fill d" style="width:33%"></div></div><div class="val">0,166</div></div>
+        <div class="bar-row"><div class="lab">reg. logistyczna</div><div class="track"><div class="fill b" style="width:83%; opacity:.55"></div></div><div class="val">0,414</div></div>
+        <div class="bar-row"><div class="lab">LightGBM</div><div class="track"><div class="fill b" style="width:92%"></div></div><div class="val">0,461</div></div>
+      </div>
+    </div>
+    <div>
+      <h3><span class="swatch" style="background:var(--accent)"></span>Podział — AP na walidacji 2023</h3>
+      <div class="chart">
+        <div class="bar-row"><div class="lab">losowy<span class="s">częstość klasy</span></div><div class="track"><div class="fill d" style="width:14.8%"></div></div><div class="val">0,074</div></div>
+        <div class="bar-row"><div class="lab">persistence<span class="s">stan z zeszłego roku</span></div><div class="track"><div class="fill d" style="width:24.8%"></div></div><div class="val">0,124</div></div>
+        <div class="bar-row"><div class="lab">reg. logistyczna</div><div class="track"><div class="fill a" style="width:42.6%; opacity:.55"></div></div><div class="val">0,213</div></div>
+        <div class="bar-row"><div class="lab">LightGBM</div><div class="track"><div class="fill a" style="width:50.2%"></div></div><div class="val">0,251</div></div>
+      </div>
+      <p style="font-size:.78rem" class="dim">Skala słupków wspólna dla obu paneli (0–0,50 AP).</p>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Zadanie / model</th><th class="num">AP</th><th class="num">AP · 2024</th><th class="num">ROC-AUC</th><th class="num">Brier</th><th class="num">lift@10%</th></tr></thead>
+      <tbody>
+        <tr><td class="rowlab" style="color:var(--built)">Odrolnienie R→B</td><td class="num dim">–</td><td class="num dim">–</td><td class="num dim">–</td><td class="num dim">–</td><td class="num dim">–</td></tr>
+        <tr><td class="dim">&nbsp;&nbsp;losowy / persistence</td><td class="num">0,065</td><td class="num">–</td><td class="num">0,50</td><td class="num">–</td><td class="num">1,0</td></tr>
+        <tr><td class="dim">&nbsp;&nbsp;regresja logistyczna</td><td class="num">0,414</td><td class="num">0,36</td><td class="num">0,856</td><td class="num">–</td><td class="num">–</td></tr>
+        <tr class="best"><td class="rowlab">&nbsp;&nbsp;LightGBM</td><td class="num">0,461</td><td class="num">0,394</td><td class="num">0,913</td><td class="num">0,052</td><td class="num">6,0</td></tr>
+        <tr><td class="rowlab" style="color:var(--accent)">Podział nieruchomości</td><td class="num dim">–</td><td class="num dim">–</td><td class="num dim">–</td><td class="num dim">–</td><td class="num dim">–</td></tr>
+        <tr><td class="dim">&nbsp;&nbsp;losowy / persistence</td><td class="num">0,074</td><td class="num">–</td><td class="num">0,50</td><td class="num">–</td><td class="num">1,0</td></tr>
+        <tr><td class="dim">&nbsp;&nbsp;regresja logistyczna</td><td class="num">0,213</td><td class="num">–</td><td class="num">0,771</td><td class="num">–</td><td class="num">–</td></tr>
+        <tr class="best"><td class="rowlab">&nbsp;&nbsp;LightGBM</td><td class="num">0,251</td><td class="num">0,279</td><td class="num">0,809</td><td class="num">0,065</td><td class="num">4,0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:.86rem" class="dim">Najlepsze LightGBM po przeszukiwaniu (coordinate descent): odrolnienie — liście 63, głęb. 6; podział — liście 15, głęb. 4 (silniejsza regularyzacja przy mniejszym sygnale). Oba: <span class="mono">min_child_samples 200</span>, <span class="mono">subsample 0,8</span>.</p>
+
+  <h3>Ranking operacyjny — trafienia w top 10%</h3>
+  <p>Model zwraca prawdopodobieństwo dla każdego heksa, więc powiat da się <b>posortować</b> od najbardziej do najmniej zagrożonego. Wybierając <b>10% najwyżej ocenionych heksów</b> (293 z 2937), tyle z nich realnie doświadcza procesu w danym roku:</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Proces</th><th class="num">rok</th><th class="num">top 10%</th><th class="num">z trafieniem</th><th class="num">precyzja@10%</th><th class="num">baza</th><th class="num">lift</th></tr></thead>
+      <tbody>
+        <tr class="best"><td class="rowlab" style="color:var(--built)">Odrolnienie R→B</td><td class="num">2023</td><td class="num">293</td><td class="num">114</td><td class="num"><b>38,9%</b></td><td class="num dim">6,5%</td><td class="num">6,0×</td></tr>
+        <tr><td class="dim">&nbsp;&nbsp;(test)</td><td class="num">2024</td><td class="num">293</td><td class="num">104</td><td class="num">35,5%</td><td class="num dim">5,8%</td><td class="num">6,1×</td></tr>
+        <tr class="best"><td class="rowlab" style="color:var(--accent)">Podział nieruchomości</td><td class="num">2023</td><td class="num">293</td><td class="num">87</td><td class="num"><b>29,7%</b></td><td class="num dim">7,4%</td><td class="num">4,0×</td></tr>
+        <tr><td class="dim">&nbsp;&nbsp;(test)</td><td class="num">2024</td><td class="num">293</td><td class="num">93</td><td class="num">31,7%</td><td class="num dim">8,0%</td><td class="num">4,0×</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:.94rem"><b>Odczyt operacyjny:</b> przeglądając 10% powiatu według rankingu, trafiasz na <b>4× więcej podziałów</b> i <b>6× więcej odrolnień</b> niż losowo. Odwrotna strona: przy bazowej częstości ~6–8% nawet dobry model nie sprawi, że większość top-10% będzie dodatnia — <b>to narzędzie zawężania pola do monitoringu, nie rozstrzygania pojedynczego heksa</b>.</p>
+</section>
+
+<section id="miary">
+  <h2><span class="n">03</span> Co znaczą te miary</h2>
+  <p class="note">Przy 6–8% klasy dodatniej trafność (accuracy) jest myląca — model „zawsze nie" ma 93% trafności i zero wartości. Dlatego patrzymy na miary rankingu i kalibracji.</p>
+  <dl class="defs">
+    <div class="def">
+      <dt>AP</dt>
+      <dd>Średnia precyzja — pole pod krzywą precyzja–czułość. Odpowiada na pytanie: gdy model wskazuje „tu dojdzie do procesu", jak często ma rację, w całym zakresie czułości.
+        <small>Punkt odniesienia = częstość klasy (0,065 dla odrolnienia). AP 0,461 to <b>7× powyżej losowego</b> i 2,8× powyżej persistence.</small></dd>
+    </div>
+    <div class="def">
+      <dt>ROC-AUC</dt>
+      <dd>Prawdopodobieństwo, że losowy heks z procesem dostanie wyższy wynik niż losowy bez. 0,5 = rzut monetą, 1,0 = idealne rozdzielenie.
+        <small>0,913 (odrolnienie) = mocne rozróżnianie. Uwaga: ROC bywa optymistyczne przy rzadkiej klasie — stąd AP jako miara wiodąca.</small></dd>
+    </div>
+    <div class="def">
+      <dt>Brier</dt>
+      <dd>Średni kwadrat błędu prawdopodobieństwa — mierzy <i>kalibrację</i>: czy „30%" naprawdę znaczy 30%. Mniej = lepiej.
+        <small>0,052 jest niskie, ale częściowo dlatego, że klasa jest rzadka. Kalibrację warto potwierdzić na osobnym foldzie.</small></dd>
+    </div>
+    <div class="def">
+      <dt>lift@10%</dt>
+      <dd>Krotność wzbogacenia w 10% heksów o najwyższym wyniku względem losowego wyboru.
+        <small>6,0 znaczy: kierując uwagę na top 10% wskazań modelu, trafiasz na odrolnienia <b>6× częściej</b> niż losując. To bezpośrednia miara użyteczności do monitoringu.</small></dd>
+    </div>
+  </dl>
+</section>
+
+<section id="ocena">
+  <h2><span class="n">04</span> Ocena dokładności</h2>
+  <div class="stack">
+    <p>Oba modele <b>istotnie biją punkty odniesienia</b> — to nie jest odtwarzanie „było w zeszłym roku". <b>Odrolnienie jest wyraźnie lepiej przewidywalne</b> (AP 0,46, ROC 0,91) niż podział (AP 0,25, ROC 0,81): konwersja R→B jest procesem bardziej regularnym przestrzennie i czasowo, podział bardziej lokalnym i losowym.</p>
+    <p>LightGBM przewyższa regresję logistyczną na obu zadaniach, ale niewiele (odrol. 0,461 vs 0,414) — <b>sygnał jest w dużej mierze liniowy</b>, nieliniowości i interakcje dokładają umiarkowanie. Dla raportu to dobra wiadomość: prosty, interpretowalny model jest już blisko.</p>
+    <p>Spadek AP na wydzielonym 2024 (odrol. 0,461 → 0,394) to naturalna zmienność rok-do-roku, nie przeuczenie — model kontrolny nie widział 2024 na żadnym etapie. Held-out potwierdza, że wynik się utrzymuje.</p>
+  </div>
+  <div class="callout">
+    <p><b>Uczciwe ograniczenie.</b> Etykiety są <i>proxy</i> liczonymi z agregatów heksowych, nie z realnego śledzenia geometrii działek rok-do-roku. Mylą podział z korektą geodezyjną i scaleniem; odrolnienie z ponownym pomiarem. Wyniki należy czytać jako prawdopodobieństwo <i>sygnału</i> zmiany, nie zdarzenia prawnego.</p>
+  </div>
+</section>
+
+<section id="cechy">
+  <h2><span class="n">05</span> Przydatność cech</h2>
+  <p class="note">Permutation importance (spadek AP po przetasowaniu cechy, walidacja 2023), zsumowany w rodziny. To bezpośrednia odpowiedź na pytanie „które dane z EGiB niosą sygnał".</p>
+
+  <div class="split-cols" style="margin-top:1.2rem">
+    <div>
+      <h3><span class="swatch" style="background:var(--built)"></span>Odrolnienie — rodziny cech</h3>
+      <div class="chart">
+        <div class="bar-row"><div class="lab">Stan heksa<span class="s">n_parcel, autoregresja</span></div><div class="track"><div class="fill b" style="width:100%"></div></div><div class="val">0,277</div></div>
+        <div class="bar-row"><div class="lab">Sąsiedztwo nbr_</div><div class="track"><div class="fill b" style="width:68%; opacity:.7"></div></div><div class="val">0,188</div></div>
+        <div class="bar-row"><div class="lab">Użytki uzg_</div><div class="track"><div class="fill g" style="width:55%"></div></div><div class="val">0,153</div></div>
+        <div class="bar-row"><div class="lab">Geometria gf_</div><div class="track"><div class="fill d" style="width:1.5%"></div></div><div class="val">0,004</div></div>
+        <div class="bar-row"><div class="lab">Plany mpzp_</div><div class="track"><div class="fill d" style="width:0.5%"></div></div><div class="val">0,000</div></div>
+        <div class="bar-row"><div class="lab">Transakcje tx_</div><div class="track"><div class="fill d" style="width:0.5%"></div></div><div class="val">0,000</div></div>
+      </div>
+    </div>
+    <div>
+      <h3><span class="swatch" style="background:var(--accent)"></span>Podział — rodziny cech</h3>
+      <div class="chart">
+        <div class="bar-row"><div class="lab">Stan heksa</div><div class="track"><div class="fill a" style="width:100%"></div></div><div class="val">0,098</div></div>
+        <div class="bar-row"><div class="lab">Użytki uzg_</div><div class="track"><div class="fill g" style="width:92%"></div></div><div class="val">0,090</div></div>
+        <div class="bar-row"><div class="lab">Sąsiedztwo nbr_</div><div class="track"><div class="fill a" style="width:31%; opacity:.7"></div></div><div class="val">0,030</div></div>
+        <div class="bar-row"><div class="lab">Plany mpzp_</div><div class="track"><div class="fill d" style="width:0.5%"></div></div><div class="val">0,000</div></div>
+        <div class="bar-row"><div class="lab">Transakcje tx_</div><div class="track"><div class="fill d" style="width:0.5%"></div></div><div class="val">0,000</div></div>
+        <div class="bar-row"><div class="lab">Geometria gf_</div><div class="track"><div class="fill d" style="width:0.5%"></div></div><div class="val">−0,001</div></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Najsilniejsze pojedyncze cechy</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Odrolnienie</th><th class="num">Δ AP</th><th>Podział</th><th class="num">Δ AP</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">n_parcel</td><td class="num">0,242</td><td class="mono">n_parcel</td><td class="num">0,060</td></tr>
+        <tr><td class="mono">uzg_B_share</td><td class="num">0,124</td><td class="mono">uzg_R_share</td><td class="num">0,056</td></tr>
+        <tr><td class="mono">convert_proxy</td><td class="num">0,035</td><td class="mono">uzg_B_share</td><td class="num">0,035</td></tr>
+        <tr><td class="mono">nbr_r2_n_parcel</td><td class="num">0,031</td><td class="mono">split_proxy</td><td class="num">0,027</td></tr>
+        <tr><td class="mono">nbr_r3_coverage_frac</td><td class="num">0,026</td><td class="mono">nbr_r2_n_parcel</td><td class="num">0,016</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout" style="border-left-color:var(--accent); background:color-mix(in srgb,var(--accent) 7%,var(--surface))">
+    <p><b>Wniosek o danych.</b> Oba procesy napędza <b>intensywność parcelacji (n_parcel), struktura użytków (R/B) i to samo u sąsiadów</b>. <b>MPZP i ceny transakcyjne nie wnoszą tu marginalnej wartości predykcyjnej</b> — plany bo w 88% to „Brak" (mała zmienność), transakcje bo są rzadkie (dużo braków). To nie znaczy, że są bezużyteczne: pozostają cenne w części <i>opisowej</i> raportu (mapy pokrycia MPZP, dynamika cen), ale jako predyktory w tym ujęciu — nie.</p>
+  </div>
+</section>
+
+<section id="wnioski">
+  <h2><span class="n">06</span> Wnioski i rekomendacje</h2>
+  <ul class="clean">
+    <li><b>Model odrolnienia jest gotowy do użytku operacyjnego</b> (lift 6× w top-10%) — wskazuje heksy o najwyższym prawdopodobieństwie konwersji R→B do monitoringu i map dynamiki.</li>
+    <li><b>Model podziału jest słabszy, ale użyteczny</b> (lift 4×). Podział jest bardziej lokalny — poprawy szukać w precyzyjniejszej etykiecie, nie w kolejnych cechach.</li>
+    <li><b>Największy potencjał: etykieta z geometrii.</b> Zamiana proxy na realne śledzenie działek rok-do-roku (nakładanie wielokątów, 1→wiele = podział) podniesie sufit obu modeli bardziej niż dowolny tuning.</li>
+    <li><b>Zawęzić zestaw cech.</b> 258 kolumn sąsiedzkich jest silnie współliniowych; redukcja poprawi interpretowalność i odporność bez straty AP.</li>
+    <li><b>Do książki:</b> od klasyfikacji „czy" w stronę regresji „ile" — prognoza <i>powierzchni</i> odrolnienia na heks, na tym samym feature-matrix.</li>
+  </ul>
+</section>
+
+<footer>
+  Powiat szczycieński · H3 r8 · dane EGiB 2013–2026 + RCN + MPZP (e-mapa) ·
+  LightGBM 4.x, walidacja czasowa · miara wiodąca AP · <span class="mono">v0.4.0</span>
+</footer>
+</div>
