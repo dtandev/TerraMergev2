@@ -52,9 +52,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Eksport map predykcji do .duckdb dla QGIS.")
     ap.add_argument("--config", default="conf/forecast.yaml")
     ap.add_argument("--task", default=None)
+    ap.add_argument(
+        "--base-year", type=int, default=None, help="rok bazowy prognozy (nadpisuje config)"
+    )
     args = ap.parse_args()
     cfg = load_config(args.config)
     task = args.task or cfg["task"]
+    if args.base_year is not None:
+        cfg["forecast_base_year"] = args.base_year
     crs = cfg["output"]["target_crs"]
 
     src = duckdb.connect(
@@ -83,7 +88,9 @@ def main() -> None:
     print(f"rok bazowy prognozy: {base_year} | heksów: {len(keys)}")
 
     out_path = Path(cfg["output"]["maps_duckdb"])
-    out_path = out_path.with_stem(f"{out_path.stem}_{task}")  # osobny plik per zadanie
+    out_path = out_path.with_stem(
+        f"{out_path.stem}_{task}_{base_year}"
+    )  # osobny plik per zadanie+rok
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         out_path.unlink()
