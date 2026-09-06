@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zmiany struktury agrarnej — powiat szczycieński</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#eef2ee; --surface:#fff; --ink:#1b211d; --muted:#586159; --hair:#d6ddd6;
+    --accent:#2e6b5e; --agri:#5a8c4e; --built:#b26240; --warn:#b8862e; --grid:#e2e8e1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif; line-height:1.55;}
+  .wrap{max-width:1040px; margin:0 auto; padding:2rem 1.2rem 4rem;}
+  header{border-bottom:2px solid var(--ink); padding-bottom:1rem; margin-bottom:1.4rem;}
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 .5rem;}
+  h1{font-family:"IBM Plex Serif",serif; font-size:1.9rem; margin:0;}
+  .sub{color:var(--muted); margin:.4rem 0 0; max-width:66ch;}
+  .controls{display:flex; flex-wrap:wrap; gap:.8rem; align-items:center; margin:1.1rem 0 .3rem; font-size:.9rem;}
+  .controls label{color:var(--muted);}
+  input[type=file]{font-family:"IBM Plex Mono",monospace; font-size:.85rem; padding:.35rem .5rem;
+    border:1px solid var(--hair); border-radius:7px; background:var(--surface); color:var(--ink);}
+  .hint{color:var(--muted); font-size:.82rem;}
+  .status{font-family:"IBM Plex Mono",monospace; font-size:.8rem; color:var(--muted);
+    background:var(--surface); border:1px solid var(--hair); border-radius:8px; padding:.6rem .8rem; margin:.7rem 0 1.2rem;}
+  .status.err{color:var(--warn); border-color:var(--warn);}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:1.2rem;}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface); border:1px solid var(--hair); border-radius:12px; padding:1rem 1rem .8rem;}
+  .card h2{font-family:"IBM Plex Serif",serif; font-size:1.05rem; margin:.1rem 0 .2rem;}
+  .card p{font-size:.82rem; color:var(--muted); margin:0 0 .5rem;}
+  .full{grid-column:1 / -1;}
+  .legend{display:flex; gap:1rem; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin:.2rem 0 .4rem;}
+  .legend span{display:inline-flex; align-items:center; gap:.35rem;}
+  .sw{width:.8rem; height:.8rem; border-radius:2px; display:inline-block;}
+  svg{width:100%; height:auto; display:block; font-family:"IBM Plex Mono",monospace;}
+  svg text{fill:var(--muted); font-size:11px;}
+  .dot:hover{r:5.5}
+  footer{margin-top:2rem; font-family:"IBM Plex Mono",monospace; font-size:.76rem; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="eyebrow">EGiB 2013–2026 · siatka H3 r8 · zmiany rok-do-roku</p>
+  <h1>Zmiany struktury agrarnej — powiat szczycieński</h1>
+  <p class="sub">Zestawienia porównawcze r/r. Dane z zewnętrznego pliku <span style="font-family:IBM Plex Mono,monospace">yoy_powiat.csv</span> (generowanego przez <span style="font-family:IBM Plex Mono,monospace">scripts/yoy_changes.py</span>). Wykresy rysowane lokalnie — bez bibliotek, działają offline. Najedź, by zobaczyć wartość.</p>
+</header>
+
+<div class="controls">
+  <label>Wskaż plik:</label>
+  <input type="file" id="file" accept=".csv,text/csv">
+  <span class="hint">albo serwuj katalog (<code>python -m http.server</code>) i odśwież</span>
+</div>
+<div id="status" class="status">Próba wczytania <code>../reports/yoy_powiat.csv</code>…</div>
+
+<div class="grid">
+  <div class="card"><h2>Liczba działek ewidencyjnych</h2><p>Rozdrobnienie struktury w czasie</p><div id="c_dzialki"></div></div>
+  <div class="card"><h2>Udział użytków R vs B</h2><p>Odrolnienie = spadek R (rolne), wzrost B (zabudowa)</p><div id="c_rb"></div></div>
+  <div class="card full"><h2>Aktywność przekształceń r/r</h2><p>Liczba heksów z podziałem i z odrolnieniem w danym roku</p><div id="c_events"></div></div>
+</div>
+
+<footer>Powiat szczycieński · źródło: artifacts/reports/yoy_powiat.csv · v0.4.0</footer>
+</div>
+
+<script>
+const C = {ink:"#1b211d", muted:"#586159", grid:"#e2e8e1", accent:"#2e6b5e", agri:"#5a8c4e", built:"#b26240"};
+const NS = "http://www.w3.org/2000/svg";
+const W = 600, H = 300, M = {l:56, r:16, t:14, b:34};
+
+function el(name, attrs, text){
+  const e = document.createElementNS(NS, name);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  if(text != null) e.textContent = text;
+  return e;
+}
+function fmt(v){ return v==null ? "—" : (Math.abs(v)>=1000 ? v.toLocaleString("pl-PL") : v); }
+
+function scales(xs, ymin, ymax){
+  const xmin = Math.min(...xs), xmax = Math.max(...xs);
+  const px = x => M.l + (xmax===xmin ? 0 : (x-xmin)/(xmax-xmin)) * (W-M.l-M.r);
+  const py = y => H-M.b - (ymax===ymin ? 0 : (y-ymin)/(ymax-ymin)) * (H-M.t-M.b);
+  return {px, py, xmin, xmax};
+}
+function yfmt(v, range){
+  return range < 5 ? (Math.round(v*1000)/1000).toString() : Math.round(v).toLocaleString("pl-PL");
+}
+function axes(svg, xs, ymin, ymax, s){
+  const range = ymax-ymin;
+  for(let i=0;i<=4;i++){
+    const y = ymin + range*i/4, yy = s.py(y);
+    svg.appendChild(el("line",{x1:M.l,x2:W-M.r,y1:yy,y2:yy,stroke:C.grid,"stroke-width":1}));
+    svg.appendChild(el("text",{x:M.l-8,y:yy+4,"text-anchor":"end"}, yfmt(y, range)));
+  }
+  xs.forEach(x => svg.appendChild(el("text",{x:s.px(x),y:H-M.b+18,"text-anchor":"middle"}, x)));
+}
+function newSvg(){
+  const svg = el("svg",{viewBox:`0 0 ${W} ${H}`, preserveAspectRatio:"xMidYMid meet"});
+  return svg;
+}
+function lineChart(id, xs, series){
+  const box = document.getElementById(id); box.innerHTML="";
+  const all = series.flatMap(s=>s.values.filter(v=>v!=null));
+  let ymin = Math.min(...all), ymax = Math.max(...all);
+  const pad=(ymax-ymin)*0.08||1; ymin-=pad; ymax+=pad; if(ymin>0&&ymin<pad*3) ymin=0;
+  const s = scales(xs, ymin, ymax);
+  const svg = newSvg(); axes(svg, xs, ymin, ymax, s);
+  series.forEach(ser=>{
+    const pts = xs.map((x,i)=>[x,ser.values[i]]).filter(p=>p[1]!=null);
+    svg.appendChild(el("polyline",{points:pts.map(p=>`${s.px(p[0])},${s.py(p[1])}`).join(" "),
+      fill:"none", stroke:ser.color, "stroke-width":2.5, "stroke-linejoin":"round"}));
+    pts.forEach(p=>{
+      const c = el("circle",{cx:s.px(p[0]), cy:s.py(p[1]), r:3.5, fill:ser.color, class:"dot"});
+      c.appendChild(el("title",{}, `${ser.name} ${p[0]}: ${fmt(p[1])}`));
+      svg.appendChild(c);
+    });
+  });
+  box.appendChild(legend(series)); box.appendChild(svg);
+}
+function barChart(id, xs, series){
+  const box = document.getElementById(id); box.innerHTML="";
+  const all = series.flatMap(s=>s.values.filter(v=>v!=null));
+  let ymax = Math.max(...all, 1); ymax*=1.1;
+  const s = scales(xs, 0, ymax);
+  const svg = newSvg(); axes(svg, xs, 0, ymax, s);
+  const bw = (W-M.l-M.r)/xs.length * 0.7, n = series.length, w = bw/n;
+  xs.forEach((x,i)=>{
+    series.forEach((ser,j)=>{
+      const v = ser.values[i]; if(v==null) return;
+      const bx = s.px(x)-bw/2 + j*w, by = s.py(v);
+      const r = el("rect",{x:bx, y:by, width:w-1, height:(H-M.b)-by, fill:ser.color, rx:1});
+      r.appendChild(el("title",{}, `${ser.name} ${x}: ${fmt(v)}`));
+      svg.appendChild(r);
+    });
+  });
+  box.appendChild(legend(series)); box.appendChild(svg);
+}
+function legend(series){
+  const wrap = document.createElement("div"); wrap.className="legend";
+  series.forEach(ser=>{
+    const sp = document.createElement("span");
+    sp.innerHTML = `<span class="sw" style="background:${ser.color}"></span>${ser.name}`;
+    wrap.appendChild(sp);
+  });
+  return wrap;
+}
+
+function parseCSV(text){
+  const lines = text.replace(/^﻿/,"").trim().split(/\r?\n/);
+  const cols = lines.shift().split(",");
+  return lines.map(l=>{
+    const v = l.split(","); const o = {};
+    cols.forEach((c,i)=>{ const t=v[i]; o[c] = (t==null||t==="") ? null : (isNaN(+t)?t:+t); });
+    return o;
+  });
+}
+
+function render(rows){
+  rows = rows.filter(r=>r.rok!=null).sort((a,b)=>a.rok-b.rok);
+  const yr = rows.map(r=>r.rok);
+  lineChart("c_dzialki", yr, [{name:"liczba działek", color:C.accent, values:rows.map(r=>r.liczba_dzialek)}]);
+  lineChart("c_rb", yr, [
+    {name:"udział R (rolne)", color:C.agri, values:rows.map(r=>r.udzial_R)},
+    {name:"udział B (zabudowa)", color:C.built, values:rows.map(r=>r.udzial_B)},
+  ]);
+  barChart("c_events", yr, [
+    {name:"podziały", color:C.accent, values:rows.map(r=>r.heksy_z_podzialem)},
+    {name:"odrolnienia", color:C.built, values:rows.map(r=>r.heksy_z_odrolnieniem)},
+  ]);
+}
+function setStatus(msg, err){ const s=document.getElementById("status"); s.innerHTML=msg; s.className="status"+(err?" err":""); }
+function load(rows, src){
+  try{
+    if(!rows || !rows.length){ setStatus("Plik pusty lub zły format (oczekiwano nagłówka z kolumną 'rok').", true); return; }
+    if(rows[0].rok==null){ setStatus("Brak kolumny 'rok' — czy to na pewno yoy_powiat.csv?", true); return; }
+    render(rows);
+    setStatus(`Wczytano <b>${rows.length}</b> lat z: ${src}. Najedź na punkt/słupek, by zobaczyć wartość.`);
+  }catch(e){ setStatus("Błąd rysowania: "+e.message, true); }
+}
+
+document.getElementById("file").addEventListener("change", e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=> load(parseCSV(rd.result), f.name);
+  rd.onerror = ()=> setStatus("Nie udało się odczytać pliku.", true);
+  rd.readAsText(f);
+});
+
+fetch("../reports/yoy_powiat.csv")
+  .then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); })
+  .then(t=> load(parseCSV(t), "../reports/yoy_powiat.csv"))
+  .catch(()=> setStatus("Auto-wczytanie zablokowane przez przeglądarkę (file://). Wskaż plik <b>yoy_powiat.csv</b> powyżej, albo serwuj katalog: <code>python -m http.server</code>.", true));
+</script>
+</body>
+</html>
