@@ -94,6 +94,7 @@ def main() -> None:
     for h in cfg["horizons"]:
         bundle = joblib.load(models_dir / f"{task}_h{h}.joblib")
         model, features = bundle["model"], bundle["features"]
+        cal_model = bundle.get("calibrated_model")
         missing = [c for c in features if c not in feats_base.columns]
         if missing:
             raise KeyError(f"Brak cech dla modelu h{h}: {missing[:5]}...")
@@ -105,13 +106,22 @@ def main() -> None:
         pred["horizon"] = h
         pred["task"] = task
         pred["probability"] = proba.round(4)
+        # prob_calibrated: realne prawdopodobieństwo z modelu skalibrowanego (CalibratedClassifierCV).
+        pred["prob_calibrated"] = (
+            cal_model.predict_proba(feats_base[features])[:, 1].round(4)
+            if cal_model is not None
+            else pred["probability"]
+        )
+        # risk_percentile: pozycja w rankingu ryzyka 0–100 (do stylizacji/komunikacji).
+        pred["risk_percentile"] = (pred["probability"].rank(pct=True) * 100).round(1)
 
         out.register("pred_df", pred)
         table = f"forecast_h{h}"
         out.execute(f'DROP TABLE IF EXISTS "{table}";')
         out.execute(f"""
             CREATE TABLE "{table}" AS
-            SELECT hex_id, base_year, target_year, horizon, task, probability,
+            SELECT hex_id, base_year, target_year, horizon, task,
+                   probability, prob_calibrated, risk_percentile,
                    ST_SetCRS(ST_GeomFromWKB(__wkb), '{crs}') AS geometry
             FROM pred_df;
         """)
@@ -153,7 +163,8 @@ def _export_gpkg(duckdb_path: Path, horizons, crs: str) -> Path | None:
         con.execute("LOAD spatial;")
         for h in horizons:
             d = con.execute(
-                f"SELECT hex_id, base_year, target_year, horizon, task, probability, "
+                f"SELECT hex_id, base_year, target_year, horizon, task, "
+                f"probability, prob_calibrated, risk_percentile, "
                 f'ST_AsWKB(geometry) AS wkb FROM "forecast_h{h}"'
             ).df()
             geom = from_wkb(d["wkb"].map(lambda b: bytes(b) if b is not None else None))

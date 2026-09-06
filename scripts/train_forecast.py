@@ -26,6 +26,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import yaml
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
@@ -211,6 +212,17 @@ def run(cfg: dict, task: str) -> dict:
 
         # Model finalny: trening na WSZYSTKICH latach z etykietą (maks. dane), do prognozy.
         Xall, yall = X.drop(columns=drop_year), y
+
+        # Model skalibrowany do prob_calibrated: CalibratedClassifierCV (izotonika, cv=3) — fit i
+        # predykcja to ten sam obiekt, więc skala jest spójna (inaczej kalibrator z jednego modelu
+        # źle mapuje wynik drugiego). Mniej drzew, bo CV nie robi early-stopping. LightGBM sam
+        # wykrywa kolumny 'category'. Nie zmienia rankingu (izotonika jest monotoniczna).
+        cal_params = dict(best_params)
+        cal_params["n_estimators"] = 400
+        calibrated_model = CalibratedClassifierCV(
+            lgb.LGBMClassifier(**cal_params), method="isotonic", cv=3
+        ).fit(Xall, yall)
+
         n_all = len(yall)
         val_frac = max(1, int(n_all * 0.15))
         final_model = lgb.LGBMClassifier(**best_params)
@@ -224,7 +236,12 @@ def run(cfg: dict, task: str) -> dict:
         )
         model_path = models_dir / f"{task}_h{h}.joblib"
         joblib.dump(
-            {"model": final_model, "features": list(Xall.columns), "categoricals": cats_h},
+            {
+                "model": final_model,
+                "features": list(Xall.columns),
+                "categoricals": cats_h,
+                "calibrated_model": calibrated_model,
+            },
             model_path,
         )
 
