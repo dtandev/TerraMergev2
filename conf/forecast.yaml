@@ -44,3 +44,7 @@ output:
   models_dir: 'artifacts/models/forecast'
   metrics_json: 'artifacts/reports/forecast_metrics.json'
   forecast_csv: 'artifacts/reports/forecast_predictions.csv'
+  # Plik .duckdb z mapami predykcji do QGIS: 1 plik, 3 tabele (forecast_h1/h2/h3),
+  # każda z geometrią heksa (EPSG:2180) i prawdopodobieństwem per (hex, rok).
+  maps_duckdb: 'artifacts/maps/forecast_maps.duckdb'
+  target_crs: 'EPSG:2180'
