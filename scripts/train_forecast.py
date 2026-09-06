@@ -281,6 +281,7 @@ def run(cfg: dict, task: str) -> dict:
         )
 
     metrics_path = Path(cfg["output"]["metrics_json"])
+    metrics_path = metrics_path.with_stem(f"{metrics_path.stem}_{task}")
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 

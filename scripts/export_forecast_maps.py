@@ -83,6 +83,7 @@ def main() -> None:
     print(f"rok bazowy prognozy: {base_year} | heksów: {len(keys)}")
 
     out_path = Path(cfg["output"]["maps_duckdb"])
+    out_path = out_path.with_stem(f"{out_path.stem}_{task}")  # osobny plik per zadanie
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         out_path.unlink()
