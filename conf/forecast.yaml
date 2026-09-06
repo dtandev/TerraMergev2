@@ -12,6 +12,12 @@ label_tables:
 
 horizons: [1, 2, 3]
 
+# Rok bazowy prognozy: ostatni w PEŁNI wartościowy rok obserwacji. Mapa daje JEDNĄ predykcję
+# na hex — P(procesu) w roku bazowym + horyzont (np. baza 2025 → 2026/2027/2028).
+# 2026 to rok bieżący (dane mogą być niepełne), więc domyślnie bazujemy na 2025.
+# null → automatycznie najnowszy rok w danych.
+forecast_base_year: 2025
+
 # Okno ewaluacji dla horyzontu 1; dla dłuższych cofa się o 1 rok na krok
 # (dłuższa etykieta wymaga, by przyszły rok istniał).
 eval:

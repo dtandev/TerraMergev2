@@ -1,13 +1,14 @@
 """Eksport map predykcji podziału/odrolnienia do pliku .duckdb dla QGIS.
 
-Wczytuje zapisane modele per horyzont (scripts/train_forecast.py), aplikuje je do KAŻDEGO
-roku z danymi i zapisuje jeden plik DuckDB z trzema tabelami przestrzennymi:
-forecast_h1 / forecast_h2 / forecast_h3 — każda z geometrią heksa (EPSG:2180) i kolumną
-`probability` = prawdopodobieństwo procesu w roku docelowym (rok bazowy + horyzont).
+Wczytuje zapisane modele per horyzont (scripts/train_forecast.py) i aplikuje je do cech z
+JEDNEGO roku bazowego (ostatni pełny rok obserwacji, conf: forecast_base_year) — dając
+JEDNĄ predykcję na hex. Zapisuje jeden plik DuckDB z trzema tabelami przestrzennymi:
+forecast_h1 / forecast_h2 / forecast_h3 — każda 1 wiersz na hex, z geometrią (EPSG:2180)
+i `probability` = P(procesu) w roku docelowym (rok bazowy + horyzont).
+Przykład: baza 2025 → forecast_h1 = P(podziału w 2026), h2 = 2027, h3 = 2028.
 
-W QGIS: dodaj warstwę z pliku .duckdb, filtruj po `base_year` (albo `target_year`),
-stylizuj po `probability`. Jeśli CRS pokaże się jako nieznany — przypisz EPSG:2180
-(DuckDB nie utrwala SRID w kolumnie GEOMETRY).
+W QGIS: dodaj warstwę, stylizuj po `probability`. Jeśli CRS pokaże się jako nieznany —
+przypisz EPSG:2180 (DuckDB nie utrwala SRID w kolumnie GEOMETRY).
 
 Uruchomienie:
     python scripts/export_forecast_maps.py --config conf/forecast.yaml [--task split]
@@ -67,8 +68,19 @@ def main() -> None:
     if "y_next" in df.columns:
         df = df.drop(columns=["y_next"])
 
-    keys = df[["hex_id", "year", "__wkb"]].copy()
+    # Rok bazowy prognozy: JEDNA predykcja na hex z ostatniego pełnego roku obserwacji.
+    base_year = cfg.get("forecast_base_year") or int(df["year"].max())
+    base_year = int(base_year)
+    if base_year not in set(df["year"].unique()):
+        raise ValueError(
+            f"forecast_base_year={base_year} nie istnieje w danych ({sorted(df['year'].unique())})"
+        )
+    base_mask = df["year"] == base_year
+
+    keys = df.loc[base_mask, ["hex_id", "__wkb"]].copy()
     feats = prep_features(df.drop(columns=["hex_id", "geometry", "__wkb"], errors="ignore"))
+    feats_base = feats.loc[base_mask]
+    print(f"rok bazowy prognozy: {base_year} | heksów: {len(keys)}")
 
     out_path = Path(cfg["output"]["maps_duckdb"])
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,17 +94,17 @@ def main() -> None:
     for h in cfg["horizons"]:
         bundle = joblib.load(models_dir / f"{task}_h{h}.joblib")
         model, features = bundle["model"], bundle["features"]
-        missing = [c for c in features if c not in feats.columns]
+        missing = [c for c in features if c not in feats_base.columns]
         if missing:
             raise KeyError(f"Brak cech dla modelu h{h}: {missing[:5]}...")
-        proba = model.predict_proba(feats[features])[:, 1]
+        proba = model.predict_proba(feats_base[features])[:, 1]
 
         pred = keys.copy()
-        pred["probability"] = proba.round(4)
-        pred["target_year"] = pred["year"] + h
-        pred = pred.rename(columns={"year": "base_year"})
-        pred["task"] = task
+        pred["base_year"] = base_year
+        pred["target_year"] = base_year + h
         pred["horizon"] = h
+        pred["task"] = task
+        pred["probability"] = proba.round(4)
 
         out.register("pred_df", pred)
         table = f"forecast_h{h}"
@@ -106,7 +118,9 @@ def main() -> None:
         out.unregister("pred_df")
         n = out.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
         written.append((table, n))
-        print(f"  {table}: {n} wierszy (predykcja {task} +{h} lat)")
+        print(
+            f"  {table}: {n} heksów | prognoza {task} na {base_year + h} (z obserwacji {base_year})"
+        )
 
     out.close()
     print(f"\nzapisano {out_path}")
