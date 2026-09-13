@@ -17,7 +17,7 @@ category: "geospatial-ml"                            # TODO: verify this — cad
 # --- Status ---
 status: "draft"
 created: "TODO: YYYY-MM-DD"                          # TODO: verify this — not derivable from git history (single squashed history)
-last_updated: "2026-07-25"
+last_updated: "2026-09-13"
 
 # --- Inputs ---
 inputs:
@@ -58,8 +58,20 @@ outputs:
     format: "DuckDB tables"
   - name: "Trained model + predictions"
     type: "joblib model + GeoParquet"
-    description: "Trained LightGBM model, feature metadata, and 2025 inference predictions written to model.model_output_dir (see artifacts/models/parcel_r8_full_1y/)"
+    description: "Trained LightGBM model, feature metadata, and inference predictions written to model.model_output_dir (see artifacts/models/parcel_r8_full_1y/)"
     format: "joblib (.joblib), JSON (feature_meta.json), GeoParquet (predictions_*.gpq)"
+  - name: "Forecast models + metrics"
+    type: "joblib models + JSON"
+    description: "Per-horizon (+1/+2/+3 yr) LightGBM models for two tasks — parcel split and odrolnienie R→B — plus a code-generated metrics report per task (AP/ROC/precision@10%, hyperparameters, feature importance). Built by scripts/train_forecast.py; see docs/analiza-predykcyjna.md"
+    format: "joblib (<task>_h{1,2,3}.joblib), JSON (forecast_metrics_<task>.json)"
+  - name: "Forecast maps (per hex)"
+    type: "DuckDB + GeoPackage"
+    description: "Per-hex prediction maps for split and odrolnienie, one layer per horizon, columns probability / prob_calibrated / risk_percentile; loadable in QGIS. Built by scripts/export_forecast_maps.py"
+    format: "DuckDB and GeoPackage (forecast_maps_<task>_<year>.{duckdb,gpkg}), EPSG:2180"
+  - name: "Year-over-year change tabulations + dashboard"
+    type: "CSV/XLSX + HTML"
+    description: "Cadastral change tabulations r/r (powiat + gmina) and an interactive dashboard reading them; plus HTML reports on model accuracy and forecast horizons. Built by scripts/yoy_changes.py, scripts/model_both.py, scripts/horizon_analysis.py"
+    format: "CSV, XLSX, HTML"
 
 # --- Parameters ---
 parameters:

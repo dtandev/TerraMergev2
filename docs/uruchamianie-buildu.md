@@ -43,8 +43,9 @@ for d in "$SRC"/rok_*; do
 done
 ```
 
-Uwaga: dla szczycieńskiego brakuje w źródle roku **2015** (nie ma danych) i **2025**
-(rok istnieje, ale bez tego powiatu). To normalne — kod obsługuje luki w latach.
+Uwaga: dla szczycieńskiego brakuje w źródle tylko roku **2015** (nie ma danych). Rok **2025**
+jest dostępny (`rok_2025/2817_szczycenski_GML` — pisownia bez „i") i wchodzi do buildu. Kod
+obsługuje luki w latach.
 
 ## 3. Zmienne środowiskowe (ścieżki)
 
@@ -53,10 +54,16 @@ Uwaga: dla szczycieńskiego brakuje w źródle roku **2015** (nie ma danych) i *
 ```bash
 export TERRAMERGE_BASE_DIR="/Users/dariusz.tanajewski/Documents/Data/Urządzeniowo-rolne/_run_szczycienski"
 export TERRAMERGE_DUCKDB_PATH="artifacts/duckdb/terramerge.duckdb"
+export TERRAMERGE_TRANSACTIONS_PATH="artifacts/parquet/transakcje.parquet"  # bo add_transaction_prices jest włączone
+export GDAL_HTTP_UNSAFESSL=YES                                              # bo add_mpzp pobiera WFS (self-signed cert)
 ```
 
 `load_dotenv(override=False)` — zmienne z powłoki wygrywają nad `.env`. NIE używaj nazwy
 `egib.duckdb` (kolizja katalog↔schema w DuckDB).
+
+Jeśli `osgeo` w venv jest zepsuty (po `brew upgrade x265`), dołóż na czas runu:
+`export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/Cellar/x265/4.2/lib:/opt/homebrew/lib"`
+i uruchamiaj bez `nohup` (SIP wycina `DYLD_*`). Właściwa naprawa: `brew reinstall libheif gdal`.
 
 ## 4. Pełny build (jedna komenda)
 
@@ -75,6 +82,12 @@ zapis cech do DuckDB, `tables_to_split` — wszystko poprawne w `conf/`). Wystar
 - `prepare.clean.enabled=false` — **zawsze**. Etap `clean` (clean_directories) USUWA
   katalogi swde/gml/shp; na klonie to strata danych klonu.
 - `model.enabled=false` — bez treningu.
+- Domyślnie budują się teraz **wszystkie 5 rodzin cech**, w tym **MPZP** (pobiera WFS —
+  stąd `GDAL_HTTP_UNSAFESSL`) i **transakcje** (czyta `TERRAMERGE_TRANSACTIONS_PATH`). Jeśli
+  nie masz pliku transakcji albo dostępu do WFS, wyłącz je: `features.add_mpzp.enabled=false
+  pipeline.add_mpzp_data.enabled=false features.add_transaction_prices.enabled=false
+  pipeline.add_transactions_data.enabled=false` i usuń ich tabele z
+  `dataset.calculate_neighborhood.tables_to_split`.
 
 Czas: rząd kilkunastu minut (najwolniejszy `MomentInertiaFeatures` w geometrii).
 Etapy: prepare (extract → merge → clean_dataset) → features (add_uzg, geometric) →
@@ -160,8 +173,10 @@ Trzy sposoby, żeby QGIS pokazał 2180:
   działek). Jeśli szukasz KUG w tabeli działek — go tam nie ma z założenia, dla żadnego roku.
   Rok 2017 KUG jest kompletny (2937 hexów, wszystkie udziały wypełnione); realnie brakuje
   roku **2015** (nie ma go w źródle), a 2014 i 2016 mają częściowe pokrycie hexów.
-- **Transakcje i MPZP wyłączone** (`add_transaction_prices`, `add_mpzp`) — brak linku do
-  transakcji i brak WFS + CSV mapowania. Włącz dopiero, gdy dane będą dostępne, i wtedy dopisz
-  ich tabele z powrotem do `dataset.calculate_neighborhood.tables_to_split`.
+- **Transakcje i MPZP są włączone** (`add_transaction_prices`, `add_mpzp` + ich kroki hex) i
+  wchodzą do `dataset.calculate_neighborhood.tables_to_split`. Wymagają: pliku transakcji
+  (`TERRAMERGE_TRANSACTIONS_PATH`, budowany z RCN gpkg) oraz WFS MPZP (`conf/config.yaml wfs.url`,
+  `GDAL_HTTP_UNSAFESSL=YES`) + mapowania `artifacts/csv/mpzp.csv`. Bez tych danych wyłącz oba
+  kroki (patrz §4) — inaczej build padnie na braku pliku / błędzie SSL.
 - **`timeout` nie istnieje na macOS**; do przerwania długiego runu użyj `pkill -f src.main`.
 - **Kasowanie klonu** (`rm -rf _run_*`) jest wolne — SWDE to tysiące drobnych plików.
