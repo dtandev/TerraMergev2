@@ -79,6 +79,10 @@ Equivalent raw invocation (what `just` runs under the hood):
 uv run python -m src.main data.base_dir=/data/egib prepare.enabled=true ...
 ```
 
+Further guides in [`docs/`](docs/):
+- [`uruchamianie-buildu.md`](docs/uruchamianie-buildu.md) — building the feature database for one powiat (scoping, env vars, partial re-runs).
+- [`analiza-predykcyjna.md`](docs/analiza-predykcyjna.md) — the predictive layer: `scripts/` for forecast models, prediction maps, year-over-year tabulations, and how to read the outputs.
+
 ---
 
 ## Examples
