@@ -12,10 +12,12 @@ label_tables:
 
 horizons: [1, 2, 3]
 
-# Rok bazowy prognozy: ostatni w PEŁNI wartościowy rok obserwacji. Mapa daje JEDNĄ predykcję
-# na hex — P(procesu) w roku bazowym + horyzont (np. baza 2025 → 2026/2027/2028).
-# 2026 to rok bieżący (dane mogą być niepełne), więc domyślnie bazujemy na 2025.
-# null → automatycznie najnowszy rok w danych.
+# Rok bazowy prognozy. Mapa daje JEDNĄ predykcję na hex — P(procesu) w roku bazowym +
+# horyzont (np. baza 2025 → 2026/2027/2028).
+# Domyślnie 2025, mimo że 2026 też jest kompletny co do działek (pełne pokrycie, +3256):
+# w eksporcie 2026 warstwa użytków (KUG) jest kopią 2025 (identyczna per hex), więc baza 2026
+# daje ΔR=ΔB=0 (zero odrolnienia) i cechy uzg_* z 2025 — nierzetelne dla modelu odrolnienia.
+# Dla podziału baza 2026 jest OK (działki są zaktualizowane). null → najnowszy rok w danych.
 forecast_base_year: 2025
 
 # Okno ewaluacji dla horyzontu 1; dla dłuższych cofa się o 1 rok na krok
