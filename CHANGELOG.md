@@ -8,6 +8,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## v0.5.0 (2026-09-13)
+
+### Feat
+
+- **analysis**: dual-task modeling, tuning and reports (#14)
+
 ## v0.4.0 (2026-09-04)
 
 ### Feat
